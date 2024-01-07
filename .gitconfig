@@ -1,0 +1,14 @@
+[core]
+        filemode = false
+        editor = vim -c \"set fenc=utf-8\"
+[user]
+        name = isucon
+        email = root@example.com
+[color]
+        ui = auto
+[push]
+        default = current
+[init]
+        defaultBranch = main
+[alias]
+        st = status

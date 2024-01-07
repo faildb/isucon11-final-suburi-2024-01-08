@@ -1,0 +1,57 @@
+# 複数serverへ proxy
+upstream app {
+    server 192.168.0.11:5000 weight=2; # weight をつけるとproxyする量を変更可能。defaultは1。多いほどたくさんrequestを振り分ける。
+    #server 192.168.0.12:7000 weight=4;
+    #server 192.100.0.3:5000;
+    keepalive 60; #app server へ keepalive する connection の数。Goはデフォルトでkeepaliveに対応している。 HTTP 1.1とConnection ""対応をしないと有効化されない。
+    # hash $request_uri consistent;  # urlが同じ場合origin serverへのrequestを同じserverへ送る。これを使うとGoのprocess cacheが効きやすくなる。cpu使用率が増える可能性があるので注意。Goでのcache hit率が低く、CPU使用率が高い場合に有効。
+}
+
+# varnishを使う場合、複数台構成はvarnishで行う。
+upstream varnish {
+    server 192.168.0.11:6081;
+    keepalive 60; # varnish server へ keepalive する connection の数。
+}
+
+server {
+    listen 443 ssl http2 reuseport;  # reuseportを使用して各ワーカーが独自のソケットを持つように。reuseportを使うときはaccept_mutexをoffにする必要がある。
+    server_name mysite.com www.mysite.com;
+
+    ssl_certificate /etc/nginx/certificates/tls-cert.pem;
+    ssl_certificate_key /etc/nginx/certificates/tls-key.pem;
+
+    # SSL Sesssion Cache
+    ssl_session_cache shared:SSL:10m; # 10MB. セッション情報をキャッシュし、SSL/TLSハンドシェイクをスキップすることでCPU使用率を減らせる。
+    ssl_session_timeout 1m;  # cacheする時間。1mは1分。
+
+    location ~ /api/courses/[0-9a-zA-Z-]+/classes/[0-9a-zA-Z-]+/assignments/export {
+        if ($http_cookie !~* "trace_id") {
+            add_header Set-Cookie "trace_id=$trace_id; Path=/; HttpOnly";
+        }
+
+        proxy_pass   http://192.168.0.11:7000;
+        proxy_http_version 1.1;          # app server との connection を keepalive するなら追加
+        proxy_set_header Connection "";  # app server との connection を keepalive するなら追加
+    }
+
+    # static file の配信用の root
+    root /home/isucon/webapp/frontend/dist;
+
+    location ~ .*\.(htm|html|css|js|jpg|png|gif|ico) {
+        if ($http_cookie !~* "trace_id") {
+            add_header Set-Cookie "trace_id=$trace_id; Path=/; HttpOnly";
+        }
+
+        expires 24h;
+        add_header Cache-Control public;
+        # try_files $uri @internal;  # 静的ファイルがない場合はapp serverに問い合わせたい場合はコメントアウトを外す。# この場合はapp server側で静的ファイル生成するなどするとよい。初期化時にファイルを消すのを忘れないように。
+    }
+
+    location @internal {
+        internal;
+        proxy_set_header Host $host;
+        proxy_pass http://localhost:8080;
+        proxy_http_version 1.1;          # app server との connection を keepalive するなら追加
+        proxy_set_header Connection "";  # app server との connection を keepalive するなら追加
+    }
+}
