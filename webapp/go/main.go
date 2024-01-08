@@ -1422,12 +1422,12 @@ func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 
 func createSubmissionsZipOnMemory(zipFilePath string, classID string, submissions []Submission) ([]byte, error) {
 	tmpDir := AssignmentsDirectory + classID + "/"
-	if err := exec.Command("rm", "-rf", tmpDir).Run(); err != nil {
-		return nil, err
-	}
-	if err := exec.Command("mkdir", tmpDir).Run(); err != nil {
-		return nil, err
-	}
+	//if err := exec.Command("rm", "-rf", tmpDir).Run(); err != nil {
+	//	return nil, err
+	//}
+	//if err := exec.Command("mkdir", tmpDir).Run(); err != nil {
+	//	return nil, err
+	//}
 
 	buf := &bytes.Buffer{}
 	zw := zip.NewWriter(buf)
@@ -1439,7 +1439,7 @@ func createSubmissionsZipOnMemory(zipFilePath string, classID string, submission
 		}
 
 		// ZIPファイルにファイルエントリを追加
-		zipFile, err := zw.Create(tmpDir + submission.UserCode + "-" + submission.FileName)
+		zipFile, err := zw.Create(submission.UserCode + "-" + submission.FileName)
 		if err != nil {
 			return nil, err
 		}
