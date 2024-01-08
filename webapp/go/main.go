@@ -987,7 +987,7 @@ func (h *handlers) GetClasses(c echo.Context) error {
 	defer tx.Rollback()
 
 	var count int
-	if err := tx.GetContext(c.Request().Context(), &count, "SELECT COUNT(*) FROM `courses` WHERE `id` = ?", courseID); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", courseID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -1237,7 +1237,7 @@ func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 	defer tx.Rollback()
 
 	var classCount int
-	if err := tx.GetContext(c.Request().Context(), &classCount, "SELECT COUNT(*) FROM `classes` WHERE `id` = ? FOR UPDATE", classID); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &classCount, "SELECT 1 FROM `classes` WHERE `id` = ? FOR UPDATE", classID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -1441,7 +1441,7 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 	defer tx.Rollback()
 
 	var count int
-	if err := tx.GetContext(c.Request().Context(), &count, "SELECT COUNT(*) FROM `courses` WHERE `id` = ?", req.CourseID); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", req.CourseID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -1532,7 +1532,7 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 	}
 
 	var registrationCount int
-	if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT COUNT(*) FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", announcement.CourseID, userID); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", announcement.CourseID, userID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
