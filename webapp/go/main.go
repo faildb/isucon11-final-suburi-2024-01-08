@@ -1736,7 +1736,8 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 	}
 
 	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcement.CourseID, userID)).Err()
-	if errors.Is(err, redis.Nil) {
+	//if errors.Is(err, redis.Nil) {
+	if true {
 		var registrationCount int
 		if err := h.DB.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", announcement.CourseID, userID); errors.Is(err, sql.ErrNoRows) {
 			return c.String(http.StatusNotFound, "No such announcement.")
