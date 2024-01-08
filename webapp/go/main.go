@@ -1344,15 +1344,16 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	courseID := c.Param("courseID")
 	classID := c.Param("classID")
 
-	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
+	//tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
+	//if err != nil {
+	//	c.Logger().Error(err)
+	//	return c.NoContent(http.StatusInternalServerError)
+	//}
+	//defer tx.Rollback()
+	db := h.DB
 
 	var status CourseStatus
-	if err := tx.GetContext(c.Request().Context(), &status, "SELECT `status` FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
+	if err := db.GetContext(c.Request().Context(), &status, "SELECT `status` FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	} else if err == sql.ErrNoRows {
@@ -1371,7 +1372,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, courseID, userID)).Err()
 	if errors.Is(err, redis.Nil) {
 		var registrationCount int
-		if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", courseID, userID); errors.Is(err, sql.ErrNoRows) {
+		if err := db.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", courseID, userID); errors.Is(err, sql.ErrNoRows) {
 			return c.String(http.StatusBadRequest, "You have not taken this course.")
 		} else if err != nil {
 			c.Logger().Error(err)
@@ -1386,7 +1387,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	}
 
 	var submissionClosed bool
-	if err := tx.GetContext(c.Request().Context(), &submissionClosed, "SELECT `submission_closed` FROM `classes` WHERE `id` = ?", classID); err != nil && err != sql.ErrNoRows {
+	if err := db.GetContext(c.Request().Context(), &submissionClosed, "SELECT `submission_closed` FROM `classes` WHERE `id` = ?", classID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	} else if err == sql.ErrNoRows {
@@ -1402,7 +1403,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	}
 	defer file.Close()
 
-	if _, err := tx.ExecContext(c.Request().Context(), "INSERT INTO `submissions` (`user_id`, `class_id`, `file_name`) VALUES (?, ?, ?) ON CONFLICT(user_id, class_id) DO UPDATE SET `file_name` = EXCLUDED.file_name", userID, classID, header.Filename); err != nil {
+	if _, err := db.ExecContext(c.Request().Context(), "INSERT INTO `submissions` (`user_id`, `class_id`, `file_name`) VALUES (?, ?, ?) ON CONFLICT(user_id, class_id) DO UPDATE SET `file_name` = EXCLUDED.file_name", userID, classID, header.Filename); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -1419,10 +1420,10 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	if err := tx.Commit(); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	//if err := tx.Commit(); err != nil {
+	//	c.Logger().Error(err)
+	//	return c.NoContent(http.StatusInternalServerError)
+	//}
 	ctx := c.Request().Context()
 	if err := rdb.Incr(ctx, "submissions:"+classID).Err(); err != nil {
 		c.Logger().Error(err)
@@ -1527,26 +1528,33 @@ type Submission struct {
 func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 	classID := c.Param("classID")
 
-	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
+	//tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
+	//if err != nil {
+	//	c.Logger().Error(err)
+	//	return c.NoContent(http.StatusInternalServerError)
+	//}
+	//defer tx.Rollback()
 
+	db := h.DB
 	var classCount int
-	if err := tx.GetContext(c.Request().Context(), &classCount, "SELECT 1 FROM `classes` WHERE `id` = ? FOR UPDATE", classID); errors.Is(err, sql.ErrNoRows) {
+	if err := db.GetContext(c.Request().Context(), &classCount, "SELECT 1 FROM `classes` WHERE `id` = ?", classID); errors.Is(err, sql.ErrNoRows) {
 		return c.String(http.StatusNotFound, "No such class.")
 	} else if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	if _, err := db.ExecContext(c.Request().Context(), "UPDATE `classes` SET `submission_closed` = true WHERE `id` = ?", classID); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
 	var submissions []Submission
 	query := "SELECT `submissions`.`user_id`, `submissions`.`file_name`, `users`.`code` AS `user_code`" +
 		" FROM `submissions`" +
 		" JOIN `users` ON `users`.`id` = `submissions`.`user_id`" +
 		" WHERE `class_id` = ?"
-	if err := tx.SelectContext(c.Request().Context(), &submissions, query, classID); err != nil {
+	if err := db.SelectContext(c.Request().Context(), &submissions, query, classID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -1563,15 +1571,10 @@ func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	if _, err := tx.ExecContext(c.Request().Context(), "UPDATE `classes` SET `submission_closed` = true WHERE `id` = ?", classID); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	if err := tx.Commit(); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	//if err := tx.Commit(); err != nil {
+	//	c.Logger().Error(err)
+	//	return c.NoContent(http.StatusInternalServerError)
+	//}
 
 	return c.Blob(200, "application/zip", buf)
 }
@@ -1795,17 +1798,18 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "Invalid format.")
 	}
 
-	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
+	//tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
+	//if err != nil {
+	//	c.Logger().Error(err)
+	//	return c.NoContent(http.StatusInternalServerError)
+	//}
+	//defer tx.Rollback()
 
-	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, req.CourseID)).Err()
+	db := h.DB
+	err := rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, req.CourseID)).Err()
 	if errors.Is(err, redis.Nil) {
 		var count int
-		if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", req.CourseID); errors.Is(err, sql.ErrNoRows) {
+		if err := db.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", req.CourseID); errors.Is(err, sql.ErrNoRows) {
 			return c.String(http.StatusNotFound, "No such course.")
 		} else if err != nil {
 			c.Logger().Error(err)
@@ -1815,31 +1819,39 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
-	}
-
-	if _, err := tx.ExecContext(c.Request().Context(), "INSERT INTO `announcements` (`id`, `course_id`, `title`, `message`) VALUES (?, ?, ?, ?)",
-		req.ID, req.CourseID, req.Title, req.Message); err != nil {
-		_ = tx.Rollback()
-		if pgxIsDuplicateError(err) {
-			var announcement Announcement
-			if err := h.DB.GetContext(c.Request().Context(), &announcement, "SELECT * FROM `announcements` WHERE `id` = ?", req.ID); err != nil {
-				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
-			}
-			if announcement.CourseID != req.CourseID || announcement.Title != req.Title || announcement.Message != req.Message {
-				return c.String(http.StatusConflict, "An announcement with the same id already exists.")
-			}
-			return c.NoContent(http.StatusCreated)
-		}
+	} else if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	result, err := db.ExecContext(c.Request().Context(), "INSERT INTO `announcements` (`id`, `course_id`, `title`, `message`) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+		req.ID, req.CourseID, req.Title, req.Message)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	ra, err := result.RowsAffected()
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	if ra == 0 {
+		var announcement Announcement
+		if err := h.DB.GetContext(c.Request().Context(), &announcement, "SELECT * FROM `announcements` WHERE `id` = ?", req.ID); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		if announcement.CourseID != req.CourseID || announcement.Title != req.Title || announcement.Message != req.Message {
+			return c.String(http.StatusConflict, "An announcement with the same id already exists.")
+		}
+		return c.NoContent(http.StatusCreated)
 	}
 
 	var targets []User
 	query := "SELECT `users`.* FROM `users`" +
 		" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
 		" WHERE `registrations`.`course_id` = ?"
-	if err := tx.SelectContext(c.Request().Context(), &targets, query, req.CourseID); err != nil {
+	if err := db.SelectContext(c.Request().Context(), &targets, query, req.CourseID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -1854,16 +1866,16 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 				UserID:         user.ID,
 			}
 		})
-		if _, err := tx.NamedExecContext(c.Request().Context(), "INSERT INTO `unread_announcements` (`announcement_id`, `user_id`) VALUES (:announcement_id, :user_id)", unreadInserts); err != nil {
+		if _, err := db.NamedExecContext(c.Request().Context(), "INSERT INTO `unread_announcements` (`announcement_id`, `user_id`) VALUES (:announcement_id, :user_id) ON CONFLICT(announcement_id, user_id) DO NOTHING", unreadInserts); err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	//if err := tx.Commit(); err != nil {
+	//	c.Logger().Error(err)
+	//	return c.NoContent(http.StatusInternalServerError)
+	//}
 
 	return c.NoContent(http.StatusCreated)
 }
