@@ -1406,25 +1406,24 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	dst := AssignmentsDirectory + classID + "-" + userID + ".pdf"
-	if err := os.WriteFile(dst, data, 0o666); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
 	if err := tx.Commit(); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	ctx := c.Request().Context()
 	if err := rdb.Incr(ctx, "submissions:"+classID).Err(); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	dst := AssignmentsDirectory + classID + "-" + userID + ".pdf"
+	f, err := os.Create(dst)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, file); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -1551,18 +1550,6 @@ func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	zipFilePath := AssignmentsDirectory + classID + ".zip"
-	//if err := createSubmissionsZip(zipFilePath, classID, submissions); err != nil {
-	//	c.Logger().Error(err)
-	//	return c.NoContent(http.StatusInternalServerError)
-	//}
-
-	buf, err := createSubmissionsZipOnMemory(zipFilePath, classID, submissions)
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
 	if _, err := tx.ExecContext(c.Request().Context(), "UPDATE `classes` SET `submission_closed` = true WHERE `id` = ?", classID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1573,7 +1560,13 @@ func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	return c.Blob(200, "application/zip", buf)
+	buf, err := createSubmissionsZipOnMemory(classID, submissions)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	return c.Stream(200, "application/zip", buf)
 }
 
 //func createSubmissionsZip(zipFilePath string, classID string, submissions []Submission) error {
@@ -1600,7 +1593,7 @@ func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 //	return exec.Command("zip", "-j", "-r", zipFilePath, tmpDir, "-i", tmpDir+"*").Run()
 //}
 
-func createSubmissionsZipOnMemory(zipFilePath string, classID string, submissions []Submission) ([]byte, error) {
+func createSubmissionsZipOnMemory(classID string, submissions []Submission) (io.Reader, error) {
 	//tmpDir := AssignmentsDirectory + classID + "/"
 	//if err := exec.Command("rm", "-rf", tmpDir).Run(); err != nil {
 	//	return nil, err
@@ -1653,7 +1646,7 @@ func createSubmissionsZipOnMemory(zipFilePath string, classID string, submission
 
 	// -i 'tmpDir/*': 空zipを許す
 	// return exec.Command("zip", "-j", "-r", zipFilePath, tmpDir, "-i", tmpDir+"*").Run()
-	return buf.Bytes(), nil
+	return buf, nil
 }
 
 // ---------- Announcement API ----------
