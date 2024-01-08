@@ -657,6 +657,43 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	now := time.Now()
+	gpas := onmemoryGPAs
+	if latestGPAs.IsZero() || len(gpas) == 0 || latestGPAs.Add(time.Second*3).Unix() < now.Unix() {
+		gpasIf, err, _ := gpasSingleflight.Do("gpas", func() (interface{}, error) {
+			// GPAの統計値
+			// 一つでも修了した科目がある学生のGPA一覧
+			var gpas []float64
+			query = "SELECT COALESCE(SUM(submissions.score::float * courses.credit::float), 0) / 100 / credits.credits::float AS `gpa`" +
+				" FROM `users`" +
+				" JOIN (" +
+				"     SELECT `users`.`id` AS `user_id`, SUM(`courses`.`credit`) AS `credits`" +
+				"     FROM `users`" +
+				"     JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
+				"     JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
+				"     GROUP BY `users`.`id`" +
+				" ) AS `credits` ON `credits`.`user_id` = `users`.`id`" +
+				" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
+				" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
+				" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
+				" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
+				" WHERE `users`.`type` = ?" +
+				" GROUP BY `users`.`id`, credits.credits"
+			if err := h.DB.SelectContext(c.Request().Context(), &gpas, query, StatusClosed, StatusClosed, Student); err != nil {
+				c.Logger().Error(err)
+				return nil, c.NoContent(http.StatusInternalServerError)
+			}
+			latestGPAs = now
+			onmemoryGPAs = gpas
+			return gpas, nil
+		})
+		if err != nil {
+			return err
+		}
+		gpas = gpasIf.([]float64)
+		// gpasSingleflight.Forget("gpas")
+	}
+
 	// 履修している科目一覧取得
 	var registeredCourses []Course
 	query := "SELECT `courses`.*" +
@@ -753,42 +790,6 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	}
 	if myCredits > 0 {
 		myGPA = myGPA / 100 / float64(myCredits)
-	}
-	now := time.Now()
-	gpas := onmemoryGPAs
-	if latestGPAs.IsZero() || len(gpas) == 0 || latestGPAs.Add(time.Second*3).Unix() < now.Unix() {
-		gpasIf, err, _ := gpasSingleflight.Do("gpas", func() (interface{}, error) {
-			// GPAの統計値
-			// 一つでも修了した科目がある学生のGPA一覧
-			var gpas []float64
-			query = "SELECT COALESCE(SUM(submissions.score::float * courses.credit::float), 0) / 100 / credits.credits::float AS `gpa`" +
-				" FROM `users`" +
-				" JOIN (" +
-				"     SELECT `users`.`id` AS `user_id`, SUM(`courses`.`credit`) AS `credits`" +
-				"     FROM `users`" +
-				"     JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-				"     JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
-				"     GROUP BY `users`.`id`" +
-				" ) AS `credits` ON `credits`.`user_id` = `users`.`id`" +
-				" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-				" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
-				" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
-				" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
-				" WHERE `users`.`type` = ?" +
-				" GROUP BY `users`.`id`, credits.credits"
-			if err := h.DB.SelectContext(c.Request().Context(), &gpas, query, StatusClosed, StatusClosed, Student); err != nil {
-				c.Logger().Error(err)
-				return nil, c.NoContent(http.StatusInternalServerError)
-			}
-			latestGPAs = now
-			onmemoryGPAs = gpas
-			return gpas, nil
-		})
-		if err != nil {
-			return err
-		}
-		gpas = gpasIf.([]float64)
-		// gpasSingleflight.Forget("gpas")
 	}
 
 	res := GetGradeResponse{
