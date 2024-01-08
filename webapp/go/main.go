@@ -42,6 +42,7 @@ func main() {
 			panic(err)
 		}
 	}()
+	initProfile()
 
 	e := echo.New()
 	e.Debug = GetEnv("DEBUG", "") == "true"
