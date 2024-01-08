@@ -729,7 +729,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		for _, class := range classes {
 			// redisから提出者数取得
 			submissionsCount, err := rdb.Get(ctx, "submissions:"+class.ID).Int()
-			if err != nil {
+			if err != nil && !errors.Is(err, redis.Nil) {
 				c.Logger().Error(err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
