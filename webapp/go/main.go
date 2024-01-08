@@ -671,7 +671,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	// GPAの統計値
 	// 一つでも修了した科目がある学生のGPA一覧
 	var gpas []float64
-	query = "SELECT COALESCE(SUM(`submissions`.`score` * `courses`.`credit`), 0) / 100 / `credits`.`credits` AS `gpa`" +
+	query = "SELECT COALESCE(SUM(submissions.score::float * courses.credit::float), 0) / 100 / credits.credits::float AS `gpa`" +
 		" FROM `users`" +
 		" JOIN (" +
 		"     SELECT `users`.`id` AS `user_id`, SUM(`courses`.`credit`) AS `credits`" +
