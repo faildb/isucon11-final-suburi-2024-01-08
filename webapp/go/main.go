@@ -1303,7 +1303,7 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 			}
 		})
 		ctx := c.Request().Context()
-		if _, err := db.NamedExecContext(ctx, "INSERT INTO `submissions` (`user_id`, `class_id`, `score`) VALUES (:user_id, :class_id, :score) ON CONFLICT(user_id, class_id) DO UPDATE SET `score` = EXCLUDED.score", updates); err != nil {
+		if _, err := db.NamedExecContext(ctx, "INSERT INTO `submissions` (`user_id`, `class_id`, `score`, `file_name`) VALUES (:user_id, :class_id, :score, '') ON CONFLICT(user_id, class_id) DO UPDATE SET `score` = EXCLUDED.score", updates); err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
