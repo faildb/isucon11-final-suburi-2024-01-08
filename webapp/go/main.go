@@ -1165,7 +1165,7 @@ func (h *handlers) AddClass(c echo.Context) error {
 
 	db := h.DB
 	var course Course
-	err := rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, courseID)).Err()
+	res, err := rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, courseID)).Result()
 	if errors.Is(err, redis.Nil) {
 		if err := db.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
 			c.Logger().Error(err)
@@ -1173,11 +1173,16 @@ func (h *handlers) AddClass(c echo.Context) error {
 		} else if err == sql.ErrNoRows {
 			return c.String(http.StatusNotFound, "No such course.")
 		}
-		err := rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, courseID), course.Status, 0).Err()
+		err := rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, courseID), string(course.Status), 0).Err()
 		if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
+	} else if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	} else {
+		course.Status = CourseStatus(res)
 	}
 	if course.Status != StatusInProgress {
 		return c.String(http.StatusBadRequest, "This course is not in-progress.")
