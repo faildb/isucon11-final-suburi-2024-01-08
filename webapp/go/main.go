@@ -1218,13 +1218,24 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "This course is not in progress.")
 	}
 
-	var registrationCount int
-	if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT COUNT(*) FROM `registrations` WHERE `user_id` = ? AND `course_id` = ?", userID, courseID); err != nil {
-		c.Logger().Error(err)
+	//var registrationCount int
+	//if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT COUNT(*) FROM `registrations` WHERE `user_id` = ? AND `course_id` = ?", userID, courseID); err != nil {
+	//	c.Logger().Error(err)
+	//	return c.NoContent(http.StatusInternalServerError)
+	//}
+
+	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, courseID, userID)).Err()
+	if errors.Is(err, redis.Nil) {
+		var registrationCount int
+		if err := h.DB.GetContext(c.Request().Context(), &registrationCount, "SELECT count(*) FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", courseID, userID); errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusBadRequest, "You have not taken this course.")
+		} else if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, courseID, userID), registrationCount, 0)
+	} else if err != nil {
 		return c.NoContent(http.StatusInternalServerError)
-	}
-	if registrationCount == 0 {
-		return c.String(http.StatusBadRequest, "You have not taken this course.")
 	}
 
 	var submissionClosed bool
