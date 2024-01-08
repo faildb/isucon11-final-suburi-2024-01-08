@@ -1,13 +1,14 @@
 DEST=$(PWD)/isucholar
 COMPILER=go
 GO_FILES=$(wildcard ./*.go ./**/*.go)
+APP_VERSION=$(shell git rev-parse --short HEAD)
 
 .PHONY: all
 all: clean build ## Cleanup and Build
 
 .PHONY: build
 build: $(GO_FILES) ## Build executable files
-	@$(COMPILER) build -o $(DEST) -ldflags "-s -w"
+	@$(COMPILER) build -o $(DEST) -ldflags "-s -w -X github.com/isucon/isucon11-final/webapp/go.AppVersion=$(APP_VERSION)"
 
 .PHONY: clean
 clean: ## Cleanup files
