@@ -1042,6 +1042,10 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	if err := rdb.Del(c.Request().Context(), fmt.Sprintf("%v:%v", CourseStatusCachePrefix, courseID)).Err(); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
 	ra, err := result.RowsAffected()
 	if err != nil {
 		c.Logger().Error(err)
@@ -1148,6 +1152,8 @@ type AddClassResponse struct {
 	ClassID string `json:"class_id"`
 }
 
+const CourseStatusCachePrefix = "couse_status"
+
 // AddClass POST /api/courses/:courseID/classes 新規講義(&課題)追加
 func (h *handlers) AddClass(c echo.Context) error {
 	courseID := c.Param("courseID")
@@ -1166,11 +1172,24 @@ func (h *handlers) AddClass(c echo.Context) error {
 
 	db := h.DB
 	var course Course
-	if err := db.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
+	res, err := rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v", CourseStatusCachePrefix, courseID)).Result()
+	if errors.Is(err, redis.Nil) {
+		if err := db.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		} else if err == sql.ErrNoRows {
+			return c.String(http.StatusNotFound, "No such course.")
+		}
+		err := rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v", CourseStatusCachePrefix, courseID), string(course.Status), 0).Err()
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+	} else if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
-	} else if err == sql.ErrNoRows {
-		return c.String(http.StatusNotFound, "No such course.")
+	} else {
+		course.Status = CourseStatus(res)
 	}
 	if course.Status != StatusInProgress {
 		return c.String(http.StatusBadRequest, "This course is not in-progress.")
