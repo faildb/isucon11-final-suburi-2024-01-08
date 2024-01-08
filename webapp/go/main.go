@@ -140,6 +140,46 @@ func (h *handlers) Initialize(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	type subumitterNum struct {
+		ClassID    string `db:"class_id"`
+		Submitters int    `db:"submitters"`
+	}
+	var subumitterNums []subumitterNum
+	if err := dbForInit.SelectContext(c.Request().Context(), &subumitterNums, "SELECT class_id, COUNT(*) AS submitters FROM submissions GROUP BY class_id"); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	for _, sn := range subumitterNums {
+		if err := rdb.Set(context.Background(), "submissions:"+sn.ClassID, sn.Submitters, time.Minute*2).Err(); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+	}
+
+	type totalScore struct {
+		UserID     string `db:"user_id"`
+		TotalScore int    `db:"total_score"`
+		CourseID   string `db:"course_id"`
+	}
+	var totalScores []totalScore
+	query := "SELECT users.id AS user_id, courses.id AS course_id, COALESCE(SUM(`submissions`.`score`), 0) AS `total_score`" +
+		" FROM `users`" +
+		" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
+		" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id`" +
+		" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
+		" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
+		" GROUP BY `users`.`id`, `courses`.`id`"
+	if err := h.DB.SelectContext(c.Request().Context(), &totalScores, query); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	for _, ts := range totalScores {
+		if err := rdb.Set(context.Background(), "course_total_scores:"+ts.CourseID+":"+ts.UserID, ts.TotalScore, 0).Err(); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+	}
+
 	res := InitializeResponse{
 		Language: "go",
 	}
@@ -590,6 +630,11 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 	newlyAddedStrs := make([]string, 0, len(newlyAdded))
 	for _, course := range newlyAdded {
 		newlyAddedStrs = append(newlyAddedStrs, fmt.Sprintf("('%v', '%v')", course.ID, userID))
+		ctx := c.Request().Context()
+		if err := rdb.Set(ctx, "course_total_scores:"+course.ID+":"+userID, 0, 0).Err(); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
 	}
 
 	query = "INSERT INTO `registrations` (`course_id`, `user_id`) VALUES " + strings.Join(newlyAddedStrs, ", ") + " ON CONFLICT(course_id, user_id) DO NOTHING"
@@ -672,33 +717,77 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	courseResults := make([]CourseResult, 0, len(registeredCourses))
 	myGPA := 0.0
 	myCredits := 0
+
+	courseIDs := lo.Map(registeredCourses, func(course Course, _ int) string {
+		return course.ID
+	})
+	cqs, args, err := sqlx.In("SELECT * FROM classes WHERE course_id IN (?) ORDER BY part DESC", courseIDs)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	var classes []Class
+	if err := h.DB.SelectContext(c.Request().Context(), &classes, cqs, args...); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	courseClassMap := lo.GroupBy(classes, func(class Class) string {
+		return class.CourseID
+	})
+	type submissionScore struct {
+		ClassID string        `db:"class_id"`
+		Score   sql.NullInt16 `db:"score"`
+	}
+	classIDs := lo.Map(classes, func(class Class, _ int) string {
+		return class.ID
+	})
+	sqs, args, err := sqlx.In("SELECT class_id, score FROM submissions WHERE class_id IN (?) AND user_id = ?", classIDs, userID)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	var submissionScores []submissionScore
+	if err := h.DB.SelectContext(c.Request().Context(), &submissionScores, sqs, args...); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	classSubmissionScoreMap := lo.Associate(submissionScores, func(submissionScore submissionScore) (string, sql.NullInt16) {
+		return submissionScore.ClassID, submissionScore.Score
+	})
+	type courseUser struct {
+		UserID   string `db:"user_id"`
+		CourseID string `db:"course_id"`
+	}
+	cuqs, args, err := sqlx.In("SELECT user_id, course_id FROM registrations WHERE course_id IN (?)", courseIDs)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	var courseUserIDs []courseUser
+	if err := h.DB.SelectContext(c.Request().Context(), &courseUserIDs, cuqs, args...); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	courseUserIDsMap := lo.GroupBy(courseUserIDs, func(courseUser courseUser) string {
+		return courseUser.CourseID
+	})
+
+	ctx := c.Request().Context()
 	for _, course := range registeredCourses {
-		// 講義一覧の取得
-		var classes []Class
-		query = "SELECT *" +
-			" FROM `classes`" +
-			" WHERE `course_id` = ?" +
-			" ORDER BY `part` DESC"
-		if err := h.DB.SelectContext(c.Request().Context(), &classes, query, course.ID); err != nil {
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
+		classes := courseClassMap[course.ID]
 
 		// 講義毎の成績計算処理
 		classScores := make([]ClassScore, 0, len(classes))
 		var myTotalScore int
 		for _, class := range classes {
-			var submissionsCount int
-			if err := h.DB.GetContext(c.Request().Context(), &submissionsCount, "SELECT COUNT(*) FROM `submissions` WHERE `class_id` = ?", class.ID); err != nil {
+			// redisから提出者数取得
+			submissionsCount, err := rdb.Get(ctx, "submissions:"+class.ID).Int()
+			if err != nil && !errors.Is(err, redis.Nil) {
 				c.Logger().Error(err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
-
-			var myScore sql.NullInt64
-			if err := h.DB.GetContext(c.Request().Context(), &myScore, "SELECT `submissions`.`score` FROM `submissions` WHERE `user_id` = ? AND `class_id` = ?", userID, class.ID); err != nil && err != sql.ErrNoRows {
-				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
-			} else if err == sql.ErrNoRows || !myScore.Valid {
+			score, ok := classSubmissionScoreMap[class.ID]
+			if !ok || !score.Valid {
 				classScores = append(classScores, ClassScore{
 					ClassID:    class.ID,
 					Part:       class.Part,
@@ -707,31 +796,53 @@ func (h *handlers) GetGrades(c echo.Context) error {
 					Submitters: submissionsCount,
 				})
 			} else {
-				score := int(myScore.Int64)
-				myTotalScore += score
+				_score := int(score.Int16)
+				myTotalScore += _score
 				classScores = append(classScores, ClassScore{
 					ClassID:    class.ID,
 					Part:       class.Part,
 					Title:      class.Title,
-					Score:      &score,
+					Score:      &_score,
 					Submitters: submissionsCount,
 				})
 			}
 		}
 
 		// この科目を履修している学生のTotalScore一覧を取得
-		var totals []int
-		query := "SELECT COALESCE(SUM(`submissions`.`score`), 0) AS `total_score`" +
-			" FROM `users`" +
-			" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-			" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id`" +
-			" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
-			" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
-			" WHERE `courses`.`id` = ?" +
-			" GROUP BY `users`.`id`"
-		if err := h.DB.SelectContext(c.Request().Context(), &totals, query, course.ID); err != nil {
+		//var totals []int
+		//query := "SELECT COALESCE(SUM(`submissions`.`score`), 0) AS `total_score`" +
+		//	" FROM `users`" +
+		//	" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
+		//	" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id`" +
+		//	" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
+		//	" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
+		//	" WHERE `courses`.`id` = ?" +
+		//	" GROUP BY `users`.`id`"
+		//if err := h.DB.SelectContext(c.Request().Context(), &totals, query, course.ID); err != nil {
+		//	c.Logger().Error(err)
+		//	return c.NoContent(http.StatusInternalServerError)
+		//}
+		registeredUsers := courseUserIDsMap[course.ID]
+		totalKeys := lo.Map(registeredUsers, func(cu courseUser, _ int) string {
+			return fmt.Sprintf("course_total_scores:%s:%s", course.ID, cu.UserID)
+		})
+		_totals, err := rdb.MGet(ctx, totalKeys...).Result()
+		if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
+		}
+		totals := make([]int, 0, len(registeredUsers))
+		for _, _total := range _totals {
+			if _total == nil {
+				totals = append(totals, 0)
+				continue
+			}
+			total, err := strconv.Atoi(_total.(string))
+			if err != nil {
+				c.Logger().Error(err)
+				return c.NoContent(http.StatusInternalServerError)
+			}
+			totals = append(totals, total)
 		}
 
 		courseResults = append(courseResults, CourseResult{
@@ -1241,7 +1352,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	defer tx.Rollback()
 
 	var status CourseStatus
-	if err := tx.GetContext(c.Request().Context(), &status, "SELECT `status` FROM `courses` WHERE `id` = ? FOR SHARE", courseID); err != nil && err != sql.ErrNoRows {
+	if err := tx.GetContext(c.Request().Context(), &status, "SELECT `status` FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	} else if err == sql.ErrNoRows {
@@ -1275,7 +1386,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	}
 
 	var submissionClosed bool
-	if err := tx.GetContext(c.Request().Context(), &submissionClosed, "SELECT `submission_closed` FROM `classes` WHERE `id` = ? FOR SHARE", classID); err != nil && err != sql.ErrNoRows {
+	if err := tx.GetContext(c.Request().Context(), &submissionClosed, "SELECT `submission_closed` FROM `classes` WHERE `id` = ?", classID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	} else if err == sql.ErrNoRows {
@@ -1312,6 +1423,11 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	ctx := c.Request().Context()
+	if err := rdb.Incr(ctx, "submissions:"+classID).Err(); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
 
 	return c.NoContent(http.StatusNoContent)
 }
@@ -1333,15 +1449,19 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 	//defer tx.Rollback()
 
 	db := h.DB
-	var submissionClosed bool
-	if err := db.GetContext(c.Request().Context(), &submissionClosed, "SELECT `submission_closed` FROM `classes` WHERE `id` = ?", classID); err != nil && err != sql.ErrNoRows {
+	type class struct {
+		SubmissionClosed bool   `db:"submission_closed"`
+		CourseID         string `db:"course_id"`
+	}
+	var cls class
+	if err := db.GetContext(c.Request().Context(), &cls, "SELECT course_id, `submission_closed` FROM `classes` WHERE `id` = ?", classID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	} else if err == sql.ErrNoRows {
 		return c.String(http.StatusNotFound, "No such class.")
 	}
 
-	if !submissionClosed {
+	if !cls.SubmissionClosed {
 		return c.String(http.StatusBadRequest, "This assignment is not closed yet.")
 	}
 
@@ -1374,6 +1494,8 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 		})
 		updates := lo.Map(req, func(score Score, _ int) submissionUpdates {
 			uid := userMap[score.UserCode]
+			rdb.IncrBy(c.Request().Context(), "course_total_scores:"+cls.CourseID+":"+uid, int64(score.Score))
+
 			return submissionUpdates{
 				UserID:  uid,
 				Score:   score.Score,
@@ -1530,7 +1652,7 @@ func createSubmissionsZipOnMemory(zipFilePath string, classID string, submission
 	}
 
 	// -i 'tmpDir/*': 空zipを許す
-	//return exec.Command("zip", "-j", "-r", zipFilePath, tmpDir, "-i", tmpDir+"*").Run()
+	// return exec.Command("zip", "-j", "-r", zipFilePath, tmpDir, "-i", tmpDir+"*").Run()
 	return buf.Bytes(), nil
 }
 
