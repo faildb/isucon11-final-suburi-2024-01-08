@@ -5,6 +5,7 @@ go 1.21
 require (
 	github.com/XSAM/otelsql v0.27.0
 	github.com/go-sql-driver/mysql v1.6.0
+	github.com/goccy/go-json v0.10.2
 	github.com/gorilla/sessions v1.2.1
 	github.com/grafana/pyroscope-go v1.0.4
 	github.com/jackc/pgconn v1.13.0
@@ -12,7 +13,6 @@ require (
 	github.com/labstack/echo-contrib v0.11.0
 	github.com/labstack/echo/v4 v4.11.3
 	github.com/mackee/pgx-replaced v0.0.0-20230218024503-3dae8b2f6855
-	github.com/motoki317/sc v1.7.1
 	github.com/oklog/ulid/v2 v2.0.2
 	github.com/redis/go-redis/extra/redisotel/v9 v9.0.5
 	github.com/redis/go-redis/v9 v9.4.0
