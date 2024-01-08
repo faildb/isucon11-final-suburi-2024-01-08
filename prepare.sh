@@ -39,6 +39,10 @@ sudo systemctl daemon-reload
 # sudo truncate -s 0 ${mysql_error_log}
 # sudo systemctl restart mysql
 
+
+# ====== postgres ======
+psql -h 192.168.0.12 -U isucon -d isucholar  -c "SELECT pg_stat_statements_reset();"
+
 # slow log
 # MYSQL="mysql -h${DB_HOST} -P${DB_PORT} -u${DB_USER} -p${DB_PASS} ${DB_DATABASE}"
 # ${MYSQL} -e "set global slow_query_log_file = '${mysql_slow_log}'; set global long_query_time = 0; set global slow_query_log = ON;"
