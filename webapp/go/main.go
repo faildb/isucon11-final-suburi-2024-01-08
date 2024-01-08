@@ -774,6 +774,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			return err
 		}
 		gpas = gpasIf.([]float64)
+		gpasSingleflight.Forget("gpas")
 	}
 
 	res := GetGradeResponse{
