@@ -461,13 +461,13 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 		return req[i].ID < req[j].ID
 	})
 
-	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
-
+	// tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
+	// if err != nil {
+	// 	c.Logger().Error(err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
+	// defer tx.Rollback()
+	db := h.DB
 	var errors RegisterCoursesErrorResponse
 	var newlyAdded []Course
 
@@ -488,7 +488,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 	// クエリの実行
 	// SELECT query_course_ids.id as query_course_id, courses.* FROM (VALUES ('01FF4RXEKS0DG2EG20CYAYCCGM'), ('01FF4RXEKS0DG2EG20CWPQ60M3'), ('33333333333333333333333333')) as query_course_ids(id) LEFT JOIN isucholar.courses ON query_course_ids.id = isucholar.courses.id
 	bulkQuery := "SELECT query_course_ids.query_course_id as query_course_id, case when courses.id is null then '' else courses.id end as id, case when courses.status is null then '' else courses.status end as status FROM (VALUES " + strings.Join(courseIDSelectsQuerys, ", ") + ") as query_course_ids(query_course_id) LEFT JOIN isucholar.courses ON query_course_ids.query_course_id = isucholar.courses.id"
-	err = tx.SelectContext(c.Request().Context(), &queryCourse, bulkQuery)
+	err = db.SelectContext(c.Request().Context(), &queryCourse, bulkQuery)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -512,7 +512,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	err = tx.SelectContext(c.Request().Context(), &newlyAdded, query, args...)
+	err = db.SelectContext(c.Request().Context(), &newlyAdded, query, args...)
 	if err == sql.ErrNoRows {
 		// do nothing
 	} else if err != nil {
@@ -554,7 +554,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 		" FROM `courses`" +
 		" JOIN `registrations` ON `courses`.`id` = `registrations`.`course_id`" +
 		" WHERE `courses`.`status` != ? AND `registrations`.`user_id` = ?"
-	if err := tx.SelectContext(c.Request().Context(), &alreadyRegistered, query, StatusClosed, userID); err != nil {
+	if err := db.SelectContext(c.Request().Context(), &alreadyRegistered, query, StatusClosed, userID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -579,16 +579,16 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 	}
 
 	query = "INSERT INTO `registrations` (`course_id`, `user_id`) VALUES " + strings.Join(newlyAddedStrs, ", ") + " ON CONFLICT(course_id, user_id) DO NOTHING"
-	_, err = tx.ExecContext(c.Request().Context(), query)
+	_, err = db.ExecContext(c.Request().Context(), query)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	if err = tx.Commit(); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	// if err = tx.Commit(); err != nil {
+	// 	c.Logger().Error(err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
 
 	return c.NoContent(http.StatusOK)
 }
@@ -1173,7 +1173,7 @@ func (h *handlers) AddClass(c echo.Context) error {
 	//	return c.NoContent(http.StatusInternalServerError)
 	//}
 
-	return c.JSON(http.StatusCreated, AddClassResponse{ClassID: classID})
+	return c.JSON(http.Statud, AddClassResponse{ClassID: classID})
 }
 
 // SubmitAssignment POST /api/courses/:courseID/classes/:classID/assignments 課題の提出
