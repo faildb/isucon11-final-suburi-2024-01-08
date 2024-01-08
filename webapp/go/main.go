@@ -773,7 +773,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		if err != nil {
 			return err
 		}
-		gpas := gpasIf.([]float64)
+		gpas = gpasIf.([]float64)
 	}
 
 	res := GetGradeResponse{
