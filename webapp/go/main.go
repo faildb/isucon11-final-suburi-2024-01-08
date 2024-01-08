@@ -699,8 +699,8 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		return class.CourseID
 	})
 	type submissionScore struct {
-		ClassID string `db:"class_id"`
-		Score   int    `db:"score"`
+		ClassID string        `db:"class_id"`
+		Score   sql.NullInt16 `db:"score"`
 	}
 	classIDs := lo.Map(classes, func(class Class, _ int) string {
 		return class.ID
@@ -715,7 +715,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	classSubmissionScoreMap := lo.Associate(submissionScores, func(submissionScore submissionScore) (string, int) {
+	classSubmissionScoreMap := lo.Associate(submissionScores, func(submissionScore submissionScore) (string, sql.NullInt16) {
 		return submissionScore.ClassID, submissionScore.Score
 	})
 
@@ -734,7 +734,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 				return c.NoContent(http.StatusInternalServerError)
 			}
 			score, ok := classSubmissionScoreMap[class.ID]
-			if !ok {
+			if !ok || !score.Valid {
 				classScores = append(classScores, ClassScore{
 					ClassID:    class.ID,
 					Part:       class.Part,
@@ -743,12 +743,13 @@ func (h *handlers) GetGrades(c echo.Context) error {
 					Submitters: submissionsCount,
 				})
 			} else {
-				myTotalScore += score
+				_score := int(score.Int16)
+				myTotalScore += _score
 				classScores = append(classScores, ClassScore{
 					ClassID:    class.ID,
 					Part:       class.Part,
 					Title:      class.Title,
-					Score:      &score,
+					Score:      &_score,
 					Submitters: submissionsCount,
 				})
 			}
