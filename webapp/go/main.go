@@ -454,7 +454,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 	courseIDSelectsQuerys := make([]string, 0, len(req))
 	for _, courseReq := range req {
 		courseIDs = append(courseIDs, courseReq.ID)
-		courseIDSelectsQuerys = append(courseIDSelectsQuerys, fmt.Sprintf("SELECT %v", courseReq.ID))
+		courseIDSelectsQuerys = append(courseIDSelectsQuerys, fmt.Sprintf("SELECT '%v'", courseReq.ID))
 	}
 
 	type QueryCourse struct {
