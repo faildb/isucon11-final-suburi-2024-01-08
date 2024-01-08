@@ -929,7 +929,7 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 	defer tx.Rollback()
 
 	var count int
-	if err := tx.GetContext(c.Request().Context(), &count, "SELECT COUNT(*) FROM `courses` WHERE `id` = ? FOR UPDATE", courseID); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ? FOR UPDATE", courseID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
