@@ -391,11 +391,15 @@ func (h *handlers) GetRegisteredCourses(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	if len(courses) == 0 {
+		return c.JSON(http.StatusOK, []GetRegisteredCourseResponseContent{})
+	}
+
 	teacherIDs := lo.Map(courses, func(course Course, _ int) string {
 		return course.TeacherID
 	})
 	teacherIDs = lo.Uniq(teacherIDs)
-	uqs, args, err := sqlx.In("SELECT * FROM `users` WHERE `id` IN (?)", teacherIDs)
+	uqs, args, err := sqlx.In("SELECT * FROM users WHERE `id` IN (?)", teacherIDs)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
