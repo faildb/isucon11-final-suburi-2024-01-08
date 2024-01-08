@@ -464,7 +464,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 	queryCourse := make([]QueryCourse, 0, len(req))
 
 	// クエリの実行
-	bulkQuery := "SELECT r.id as query_id, c.* FROM ( " + strings.Join(courseIDSelectsQuerys, " UNION ALL ") + " ) r(id) LEFT JOIN courses c ON r.id = c.id LOCK IN SHARE MODE;"
+	bulkQuery := "SELECT r.id as query_id, c.* FROM ( " + strings.Join(courseIDSelectsQuerys, " UNION ALL ") + " ) r(id) LEFT JOIN courses c ON r.id = c.id;"
 	err = tx.SelectContext(c.Request().Context(), &queryCourse, bulkQuery)
 	if err != nil {
 		c.Logger().Error(err)
