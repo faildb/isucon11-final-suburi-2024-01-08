@@ -103,7 +103,7 @@ type InitializeResponse struct {
 
 // Initialize POST /initialize 初期化エンドポイント
 func (h *handlers) Initialize(c echo.Context) error {
-	dbForInit, _ := GetDB(true)
+	dbForInit, _ := GetDBOtel()
 
 	files := []string{
 		"1_schema.sql",

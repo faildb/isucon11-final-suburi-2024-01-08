@@ -9,20 +9,22 @@ import (
 	"github.com/XSAM/otelsql"
 	"github.com/jmoiron/sqlx"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+
+	_ "github.com/mackee/pgx-replaced"
 )
 
 func GetDBNoOtel() (*sqlx.DB, error) {
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%v)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true&time_zone='+00:00'",
+		"postgres://%s:%s@%s:%v/%s?sslmode=disable",
 		GetEnv("DB_USER", "isucon"),
 		GetEnv("DB_PASS", "isucon"),
 		GetEnv("DB_HOSTNAME", "127.0.0.1"),
-		GetEnv("DB_PORT", "3306"),
-		GetEnv("DB_DATABASE", "isucon"),
+		GetEnv("DB_PORT", "5432"),
+		GetEnv("DB_DATABASE", "isucholar"),
 	)
 
 	tmpDB, err := sql.Open(
-		"mysql",
+		"pgx-replaced",
 		dsn,
 	)
 	if err != nil {
@@ -31,10 +33,10 @@ func GetDBNoOtel() (*sqlx.DB, error) {
 
 	WaitDB(tmpDB)
 
-	tmpDB.SetMaxOpenConns(10)
+	tmpDB.SetMaxOpenConns(50)
 	tmpDB.SetConnMaxLifetime(5 * time.Minute)
 
-	return sqlx.NewDb(tmpDB, "mysql"), nil
+	return sqlx.NewDb(tmpDB, "pgx"), nil
 }
 
 func GetDBOtel() (*sqlx.DB, error) {
@@ -43,19 +45,19 @@ func GetDBOtel() (*sqlx.DB, error) {
 	}
 
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%v)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true",
+		"postgres://%s:%s@%s:%v/%s?sslmode=disable",
 		GetEnv("DB_USER", "isucon"),
 		GetEnv("DB_PASS", "isucon"),
 		GetEnv("DB_HOSTNAME", "127.0.0.1"),
-		GetEnv("DB_PORT", "3306"),
+		GetEnv("DB_PORT", "5432"),
 		GetEnv("DB_DATABASE", "isucholar"),
 	)
 
 	tmpDB, err := otelsql.Open(
-		"mysql",
+		"pgx-replaced",
 		dsn,
 		otelsql.WithAttributes(
-			semconv.DBSystemMySQL,
+			semconv.DBSystemPostgreSQL,
 		),
 		otelsql.WithSpanOptions(otelsql.SpanOptions{
 			Ping:                 false,
@@ -75,10 +77,10 @@ func GetDBOtel() (*sqlx.DB, error) {
 
 	WaitDB(tmpDB)
 
-	tmpDB.SetMaxOpenConns(10)
+	tmpDB.SetMaxOpenConns(50)
 	tmpDB.SetConnMaxLifetime(5 * time.Minute)
 
-	return sqlx.NewDb(tmpDB, "mysql"), nil
+	return sqlx.NewDb(tmpDB, "pgx"), nil
 }
 
 func WaitDB(db *sql.DB) {
