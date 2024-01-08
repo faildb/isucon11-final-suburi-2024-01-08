@@ -19,6 +19,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.21.0
 	go.opentelemetry.io/otel/sdk v1.21.0
 	golang.org/x/crypto v0.15.0
+	golang.org/x/sync v0.3.0
 )
 
 require (
