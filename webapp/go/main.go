@@ -156,6 +156,30 @@ func (h *handlers) Initialize(c echo.Context) error {
 		}
 	}
 
+	type totalScore struct {
+		UserID     string `db:"user_id"`
+		TotalScore int    `db:"total_score"`
+		CourseID   string `db:"course_id"`
+	}
+	var totalScores []totalScore
+	query := "SELECT users.id AS user_id, courses.id AS course_id, COALESCE(SUM(`submissions`.`score`), 0) AS `total_score`" +
+		" FROM `users`" +
+		" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
+		" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id`" +
+		" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
+		" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
+		" GROUP BY `users`.`id`, `courses`.`id`"
+	if err := h.DB.SelectContext(c.Request().Context(), &totalScores, query); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	for _, ts := range totalScores {
+		if err := rdb.Set(context.Background(), "course_total_scores:"+ts.CourseID+":"+ts.UserID, ts.TotalScore, 0).Err(); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+	}
+
 	res := InitializeResponse{
 		Language: "go",
 	}
@@ -599,6 +623,11 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 	newlyAddedStrs := make([]string, 0, len(newlyAdded))
 	for _, course := range newlyAdded {
 		newlyAddedStrs = append(newlyAddedStrs, fmt.Sprintf("('%v', '%v')", course.ID, userID))
+		ctx := c.Request().Context()
+		if err := rdb.Set(ctx, "course_total_scores:"+course.ID+":"+userID, 0, 0).Err(); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
 	}
 
 	query = "INSERT INTO `registrations` (`course_id`, `user_id`) VALUES " + strings.Join(newlyAddedStrs, ", ") + " ON CONFLICT(course_id, user_id) DO NOTHING"
@@ -718,6 +747,23 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	classSubmissionScoreMap := lo.Associate(submissionScores, func(submissionScore submissionScore) (string, sql.NullInt16) {
 		return submissionScore.ClassID, submissionScore.Score
 	})
+	type courseUser struct {
+		UserID   string `db:"user_id"`
+		CourseID string `db:"course_id"`
+	}
+	cuqs, args, err := sqlx.In("SELECT user_id, course_id FROM registrations WHERE course_id IN (?)", courseIDs)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	var courseUserIDs []courseUser
+	if err := h.DB.SelectContext(c.Request().Context(), &courseUserIDs, cuqs, args...); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	courseUserIDsMap := lo.GroupBy(courseUserIDs, func(courseUser courseUser) string {
+		return courseUser.CourseID
+	})
 
 	ctx := c.Request().Context()
 	for _, course := range registeredCourses {
@@ -756,16 +802,25 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		}
 
 		// この科目を履修している学生のTotalScore一覧を取得
+		//var totals []int
+		//query := "SELECT COALESCE(SUM(`submissions`.`score`), 0) AS `total_score`" +
+		//	" FROM `users`" +
+		//	" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
+		//	" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id`" +
+		//	" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
+		//	" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
+		//	" WHERE `courses`.`id` = ?" +
+		//	" GROUP BY `users`.`id`"
+		//if err := h.DB.SelectContext(c.Request().Context(), &totals, query, course.ID); err != nil {
+		//	c.Logger().Error(err)
+		//	return c.NoContent(http.StatusInternalServerError)
+		//}
+		registeredUsers := courseUserIDsMap[course.ID]
+		totalKeys := lo.Map(registeredUsers, func(cu courseUser, _ int) string {
+			return fmt.Sprintf("course_total_scores:%s:%s", course.ID, cu.UserID)
+		})
 		var totals []int
-		query := "SELECT COALESCE(SUM(`submissions`.`score`), 0) AS `total_score`" +
-			" FROM `users`" +
-			" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-			" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id`" +
-			" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
-			" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
-			" WHERE `courses`.`id` = ?" +
-			" GROUP BY `users`.`id`"
-		if err := h.DB.SelectContext(c.Request().Context(), &totals, query, course.ID); err != nil {
+		if err := rdb.MGet(ctx, totalKeys...).Scan(&totals); err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
@@ -1386,6 +1441,8 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 		})
 		updates := lo.Map(req, func(score Score, _ int) submissionUpdates {
 			uid := userMap[score.UserCode]
+			rdb.IncrBy(c.Request().Context(), "course_total_scores:"+classID+":"+uid, int64(score.Score))
+
 			return submissionUpdates{
 				UserID:  uid,
 				Score:   score.Score,
