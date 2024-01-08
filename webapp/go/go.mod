@@ -6,6 +6,7 @@ require (
 	github.com/XSAM/otelsql v0.27.0
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/gorilla/sessions v1.2.1
+	github.com/grafana/pyroscope-go v1.0.4
 	github.com/jackc/pgconn v1.13.0
 	github.com/jmoiron/sqlx v1.3.4
 	github.com/labstack/echo-contrib v0.11.0
@@ -28,6 +29,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/gorilla/context v1.1.1 // indirect
 	github.com/gorilla/securecookie v1.1.1 // indirect
+	github.com/grafana/pyroscope-go/godeltaprof v0.1.4 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.16.0 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
