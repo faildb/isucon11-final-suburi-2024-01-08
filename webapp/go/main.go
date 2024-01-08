@@ -48,7 +48,7 @@ func main() {
 	e.Server.Addr = fmt.Sprintf(":%v", GetEnv("PORT", "7000"))
 	e.HideBanner = true
 
-	e.Use(middleware.Logger())
+	// e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte("trapnomura"))))
 	e.Use(otelecho.Middleware("isucholar"))
@@ -1201,31 +1201,33 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "Invalid format.")
 	}
 
-	userCodes := lo.Map(req, func(score Score, _ int) string {
-		return score.UserCode
-	})
-	uqs, args, err := sqlx.In("SELECT id, code FROM users  WHERE code IN (?)", userCodes)
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	var users []User
-	if err := tx.SelectContext(c.Request().Context(), &users, uqs, args...); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	userMap := lo.Associate(users, func(user User) (string, string) {
-		return user.Code, user.ID
-	})
-
-	for _, score := range req {
-		uid, ok := userMap[score.UserCode]
-		if !ok {
-			return c.String(http.StatusBadRequest, "No such user.")
-		}
-		if _, err := tx.ExecContext(c.Request().Context(), "UPDATE `submissions` SET `score` = ? WHERE user_id = ? AND class_id = ?", score.Score, uid, classID); err != nil {
+	if len(req) > 0 {
+		userCodes := lo.Map(req, func(score Score, _ int) string {
+			return score.UserCode
+		})
+		uqs, args, err := sqlx.In("SELECT id, code FROM users  WHERE code IN (?)", userCodes)
+		if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
+		}
+		var users []User
+		if err := tx.SelectContext(c.Request().Context(), &users, uqs, args...); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		userMap := lo.Associate(users, func(user User) (string, string) {
+			return user.Code, user.ID
+		})
+
+		for _, score := range req {
+			uid, ok := userMap[score.UserCode]
+			if !ok {
+				return c.String(http.StatusBadRequest, "No such user.")
+			}
+			if _, err := tx.ExecContext(c.Request().Context(), "UPDATE `submissions` SET `score` = ? WHERE user_id = ? AND class_id = ?", score.Score, uid, classID); err != nil {
+				c.Logger().Error(err)
+				return c.NoContent(http.StatusInternalServerError)
+			}
 		}
 	}
 
