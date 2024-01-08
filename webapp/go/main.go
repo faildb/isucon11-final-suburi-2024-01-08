@@ -452,37 +452,87 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 
 	var errors RegisterCoursesErrorResponse
 	var newlyAdded []Course
+
+	courseIDs := make([]string, 0, len(req))
+	courseIDSelectsQuerys := make([]string, 0, len(req))
 	for _, courseReq := range req {
-		courseID := courseReq.ID
-		var course Course
-		if err := tx.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ? FOR SHARE", courseID); err != nil && err != sql.ErrNoRows {
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		} else if err == sql.ErrNoRows {
-			errors.CourseNotFound = append(errors.CourseNotFound, courseReq.ID)
-			continue
-		}
-
-		if course.Status != StatusRegistration {
-			errors.NotRegistrableStatus = append(errors.NotRegistrableStatus, course.ID)
-			continue
-		}
-
-		// すでに履修登録済みの科目は無視する
-		var count int
-		if err := tx.GetContext(c.Request().Context(), &count, "SELECT COUNT(*) FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", course.ID, userID); err != nil {
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
-		if count > 0 {
-			continue
-		}
-
-		newlyAdded = append(newlyAdded, course)
+		courseIDs = append(courseIDs, courseReq.ID)
+		courseIDSelectsQuerys = append(courseIDSelectsQuerys, fmt.Sprintf("('%v')", courseReq.ID))
 	}
 
+	type QueryCourse struct {
+		QueryCourseID string       `db:"query_course_id"`
+		ID            string       `db:"id"`
+		Status        CourseStatus `db:"status"`
+	}
+	queryCourse := make([]QueryCourse, 0, len(req))
+
+	// クエリの実行
+	//SELECT query_course_ids.id as query_course_id, courses.* FROM (VALUES ('01FF4RXEKS0DG2EG20CYAYCCGM'), ('01FF4RXEKS0DG2EG20CWPQ60M3'), ('33333333333333333333333333')) as query_course_ids(id) LEFT JOIN isucholar.courses ON query_course_ids.id = isucholar.courses.id
+	bulkQuery := "SELECT query_course_ids.query_course_id as query_course_id, case when courses.id is null then '' else courses.id end as id, case when courses.status is null then '' else courses.status end as status FROM (VALUES " + strings.Join(courseIDSelectsQuerys, ", ") + ") as query_course_ids(query_course_id) LEFT JOIN isucholar.courses ON query_course_ids.query_course_id = isucholar.courses.id"
+	err = tx.SelectContext(c.Request().Context(), &queryCourse, bulkQuery)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	for _, qc := range queryCourse {
+		if qc.ID == "" {
+			errors.CourseNotFound = append(errors.CourseNotFound, qc.QueryCourseID)
+			continue
+		}
+
+		if qc.Status != StatusRegistration {
+			errors.NotRegistrableStatus = append(errors.NotRegistrableStatus, qc.ID)
+			continue
+		}
+	}
+
+	query, args, err := sqlx.In("with c as (select * from courses where id in (?)), r as (select * from registrations where user_id = ?) select c.* from c left join r on c.id = r.course_id where course_id is null;", courseIDs, userID)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	err = tx.SelectContext(c.Request().Context(), &newlyAdded, query, args...)
+	if err == sql.ErrNoRows {
+		// do nothing
+	} else if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	//for _, courseReq := range req {
+	//	courseID := courseReq.ID
+	//	var course Course
+	//	if err := tx.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ? FOR SHARE", courseID); err != nil && err != sql.ErrNoRows {
+	//		c.Logger().Error(err)
+	//		return c.NoContent(http.StatusInternalServerError)
+	//	} else if err == sql.ErrNoRows {
+	//		errors.CourseNotFound = append(errors.CourseNotFound, courseReq.ID)
+	//		continue
+	//	}
+	//
+	//	if course.Status != StatusRegistration {
+	//		errors.NotRegistrableStatus = append(errors.NotRegistrableStatus, course.ID)
+	//		continue
+	//	}
+	//
+	//	// すでに履修登録済みの科目は無視する
+	//	var count int
+	//	if err := tx.GetContext(c.Request().Context(), &count, "SELECT COUNT(*) FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", course.ID, userID); err != nil {
+	//		c.Logger().Error(err)
+	//		return c.NoContent(http.StatusInternalServerError)
+	//	}
+	//	if count > 0 {
+	//		continue
+	//	}
+	//
+	//	newlyAdded = append(newlyAdded, course)
+	//}
+
 	var alreadyRegistered []Course
-	query := "SELECT `courses`.*" +
+	query = "SELECT `courses`.*" +
 		" FROM `courses`" +
 		" JOIN `registrations` ON `courses`.`id` = `registrations`.`course_id`" +
 		" WHERE `courses`.`status` != ? AND `registrations`.`user_id` = ?"
