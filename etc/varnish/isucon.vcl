@@ -81,20 +81,20 @@ sub vcl_recv {
     # ban
     # ↓のコマンドでhit missの流れが見える
     # sudo varnishncsa -F '%m %U%q %{Varnish:hitmiss}x'
-    if (req.method == "BAN") {
-        # Same ACL check as above:
-        # アクセス制限はしない（実運用だと死ぬ）
-        # if (!client.ip ~ purge) {
-        #         return(synth(403, "Not allowed."));
-        # }
-        std.log("BAN HOST: ~ " + req.http.X-Host-Invalidation-Pattern);
-        std.log("BAN URL: ~ " + req.http.X-Url-Invalidation-Pattern);
-        if (std.ban("obj.http.x-host ~ " + req.http.X-Host-Invalidation-Pattern + " && obj.http.x-url ~ " + req.http.X-Url-Invalidation-Pattern)) {
-            return(synth(200, "Ban added"));
-        } else {
-            return(synth(400, std.ban_error()));
-        }
-    }
+    # if (req.method == "BAN") {
+    #     # Same ACL check as above:
+    #     # アクセス制限はしない（実運用だと死ぬ）
+    #     # if (!client.ip ~ purge) {
+    #     #         return(synth(403, "Not allowed."));
+    #     # }
+    #     std.log("BAN HOST: ~ " + req.http.X-Host-Invalidation-Pattern);
+    #     std.log("BAN URL: ~ " + req.http.X-Url-Invalidation-Pattern);
+    #     if (std.ban("obj.http.x-host ~ " + req.http.X-Host-Invalidation-Pattern + " && obj.http.x-url ~ " + req.http.X-Url-Invalidation-Pattern)) {
+    #         return(synth(200, "Ban added"));
+    #     } else {
+    #         return(synth(400, std.ban_error()));
+    #     }
+    # }
 
 
     # ----------------------------  isucon のURL  ----------------------------

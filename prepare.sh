@@ -48,13 +48,13 @@ sleep 0.5 && sudo systemctl is-active mysql # serviceの起動失敗確認。即
 
 # ====== go ======
 (
-  cd /home/isucon/webapp/golang
+  cd /home/isucon/webapp/go
   make all
 )
 mkdir -p /home/isucon/log/app
 #sudo logrotate -f /home/isucon/etc/logrotate.d/app
-sudo systemctl restart isucon.go.service
-sleep 0.5 && sudo systemctl is-active isu-go
+sudo systemctl restart isucholar.go.service
+sleep 0.5 && sudo systemctl is-active isucholar.go.service
 
 now=`date +'%Y-%m-%dT%H:%M:%S'`
 
@@ -67,11 +67,11 @@ now=`date +'%Y-%m-%dT%H:%M:%S'`
 # sleep 0.5 && sudo systemctl is-active redis-server
 
 # ====== varnish ======
-sudo tee /etc/varnish/isucon.vcl < etc/varnish/isucon.vcl > /dev/null
-sudo tee /lib/systemd/system/varnish.service < lib/systemd/system/varnish.service > /dev/null
-sudo systemctl daemon-reload
-sudo systemctl restart varnish
-sleep 0.5 && sudo systemctl is-active varnish
+# sudo tee /etc/varnish/isucon.vcl < etc/varnish/isucon.vcl > /dev/null
+# sudo tee /lib/systemd/system/varnish.service < lib/systemd/system/varnish.service > /dev/null
+# sudo systemctl daemon-reload
+# sudo systemctl restart varnish
+# sleep 0.5 && sudo systemctl is-active varnish
 
 # ====== nginx ======
 # mkdir -p /home/isucon/log/nginx
