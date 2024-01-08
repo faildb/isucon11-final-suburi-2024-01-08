@@ -1421,7 +1421,7 @@ func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 //}
 
 func createSubmissionsZipOnMemory(zipFilePath string, classID string, submissions []Submission) ([]byte, error) {
-	tmpDir := AssignmentsDirectory + classID + "/"
+	//tmpDir := AssignmentsDirectory + classID + "/"
 	//if err := exec.Command("rm", "-rf", tmpDir).Run(); err != nil {
 	//	return nil, err
 	//}
