@@ -43,7 +43,7 @@ func GetDBOtel() (*sqlx.DB, error) {
 	}
 
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%v)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true&time_zone='+00:00'",
+		"%s:%s@tcp(%s:%v)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true",
 		GetEnv("DB_USER", "isucon"),
 		GetEnv("DB_PASS", "isucon"),
 		GetEnv("DB_HOSTNAME", "127.0.0.1"),
