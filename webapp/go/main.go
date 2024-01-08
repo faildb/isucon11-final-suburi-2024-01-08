@@ -301,6 +301,7 @@ func (h *handlers) Login(c echo.Context) error {
 
 	sess.Values["userID"] = user.ID
 	sess.Values["userName"] = user.Name
+	sess.Values["code"] = user.Code
 	sess.Values["isAdmin"] = user.Type == Teacher
 	sess.Options = &sessions.Options{
 		Path:   "/",
@@ -346,17 +347,23 @@ type GetMeResponse struct {
 
 // GetMe GET /api/users/me 自身の情報を取得
 func (h *handlers) GetMe(c echo.Context) error {
-	userID, userName, isAdmin, err := getUserInfo(c)
+	_, userName, isAdmin, err := getUserInfo(c)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	sess, err := session.Get(SessionName, c)
 	var userCode string
-	if err := h.DB.GetContext(c.Request().Context(), &userCode, "SELECT `code` FROM `users` WHERE `id` = ?", userID); err != nil {
-		c.Logger().Error(err)
+	if err != nil {
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	userCode = sess.Values["code"].(string)
+	// if err := h.DB.GetContext(c.Request().Context(), &userCode, "SELECT `code` FROM `users` WHERE `id` = ?", userID); err != nil {
+	// 	c.Logger().Error(err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
 
 	return c.JSON(http.StatusOK, GetMeResponse{
 		Code:    userCode,
