@@ -1413,15 +1413,19 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 	//defer tx.Rollback()
 
 	db := h.DB
-	var submissionClosed bool
-	if err := db.GetContext(c.Request().Context(), &submissionClosed, "SELECT `submission_closed` FROM `classes` WHERE `id` = ?", classID); err != nil && err != sql.ErrNoRows {
+	type class struct {
+		SubmissionClosed bool   `db:"submission_closed"`
+		CourseID         string `db:"course_id"`
+	}
+	var cls class
+	if err := db.GetContext(c.Request().Context(), &cls, "SELECT course_id, `submission_closed` FROM `classes` WHERE `id` = ?", classID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	} else if err == sql.ErrNoRows {
 		return c.String(http.StatusNotFound, "No such class.")
 	}
 
-	if !submissionClosed {
+	if !cls.SubmissionClosed {
 		return c.String(http.StatusBadRequest, "This assignment is not closed yet.")
 	}
 
@@ -1454,7 +1458,7 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 		})
 		updates := lo.Map(req, func(score Score, _ int) submissionUpdates {
 			uid := userMap[score.UserCode]
-			rdb.IncrBy(c.Request().Context(), "course_total_scores:"+classID+":"+uid, int64(score.Score))
+			rdb.IncrBy(c.Request().Context(), "course_total_scores:"+cls.CourseID+":"+uid, int64(score.Score))
 
 			return submissionUpdates{
 				UserID:  uid,
