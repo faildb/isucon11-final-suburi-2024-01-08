@@ -87,6 +87,3 @@ CREATE TABLE `unread_announcements`
 -- add index
 create index announcements_course_id_index
     on isucholar.announcements (course_id);
-
-create index unread_announcements_user_id_announcement_id_index
-    on isucholar.unread_announcements (user_id, announcement_id);
