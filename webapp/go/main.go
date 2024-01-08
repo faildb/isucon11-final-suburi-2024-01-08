@@ -467,7 +467,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 
 	// クエリの実行
 	//SELECT query_course_ids.id as query_course_id, courses.* FROM (VALUES ('01FF4RXEKS0DG2EG20CYAYCCGM'), ('01FF4RXEKS0DG2EG20CWPQ60M3'), ('33333333333333333333333333')) as query_course_ids(id) LEFT JOIN isucholar.courses ON query_course_ids.id = isucholar.courses.id
-	bulkQuery := "SELECT query_course_ids.query_course_id as query_course_id, case when courses.id is null then '' else courses.id end as id, case when courses.status is null then '' else courses.status end as status FROM (VALUES " + strings.Join(courseIDSelectsQuerys, ", ") + ") as query_course_ids(query_course_id) LEFT JOIN isucholar.courses ON query_course_ids.id = isucholar.courses.id"
+	bulkQuery := "SELECT query_course_ids.query_course_id as query_course_id, case when courses.id is null then '' else courses.id end as id, case when courses.status is null then '' else courses.status end as status FROM (VALUES " + strings.Join(courseIDSelectsQuerys, ", ") + ") as query_course_ids(query_course_id) LEFT JOIN isucholar.courses ON query_course_ids.query_course_id = isucholar.courses.id"
 	err = tx.SelectContext(c.Request().Context(), &queryCourse, bulkQuery)
 	if err != nil {
 		c.Logger().Error(err)
