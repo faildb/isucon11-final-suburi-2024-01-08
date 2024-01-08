@@ -455,7 +455,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 	courseIDSelectsQuerys := make([]string, 0, len(req))
 	for _, courseReq := range req {
 		courseIDs = append(courseIDs, courseReq.ID)
-		courseIDSelectsQuerys = append(courseIDSelectsQuerys, fmt.Sprintf("SELECT '%v'", courseReq.ID))
+		courseIDSelectsQuerys = append(courseIDSelectsQuerys, fmt.Sprintf("('%v')", courseReq.ID))
 	}
 
 	type QueryCourse struct {
@@ -465,7 +465,8 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 	queryCourse := make([]QueryCourse, 0, len(req))
 
 	// クエリの実行
-	bulkQuery := "SELECT r.id as query_id, c.* FROM ( " + strings.Join(courseIDSelectsQuerys, " UNION ALL ") + " ) r(id) LEFT JOIN courses c ON r.id = c.id;"
+	//SELECT query_cource_ids.id as query_cource_id, courses.* FROM (VALUES ('01FF4RXEKS0DG2EG20CYAYCCGM'), ('01FF4RXEKS0DG2EG20CWPQ60M3'), ('33333333333333333333333333')) as query_cource_ids(id) LEFT JOIN isucholar.courses ON query_cource_ids.id = isucholar.courses.id
+	bulkQuery := "SELECT query_cource_ids.id as query_cource_id, courses.* FROM (VALUES " + strings.Join(courseIDSelectsQuerys, ", ") + ") as query_cource_ids(id) LEFT JOIN isucholar.courses ON query_cource_ids.id = isucholar.courses.id"
 	err = tx.SelectContext(c.Request().Context(), &queryCourse, bulkQuery)
 	if err != nil {
 		c.Logger().Error(err)
