@@ -67,11 +67,11 @@ now=`date +'%Y-%m-%dT%H:%M:%S'`
 # sleep 0.5 && sudo systemctl is-active redis-server
 
 # ====== varnish ======
-sudo tee /etc/varnish/isucon.vcl < etc/varnish/isucon.vcl > /dev/null
-sudo tee /lib/systemd/system/varnish.service < lib/systemd/system/varnish.service > /dev/null
-sudo systemctl daemon-reload
-sudo systemctl restart varnish
-sleep 0.5 && sudo systemctl is-active varnish
+# sudo tee /etc/varnish/isucon.vcl < etc/varnish/isucon.vcl > /dev/null
+# sudo tee /lib/systemd/system/varnish.service < lib/systemd/system/varnish.service > /dev/null
+# sudo systemctl daemon-reload
+# sudo systemctl restart varnish
+# sleep 0.5 && sudo systemctl is-active varnish
 
 # ====== nginx ======
 # mkdir -p /home/isucon/log/nginx
