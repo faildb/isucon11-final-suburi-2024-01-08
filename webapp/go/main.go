@@ -561,7 +561,6 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 	}
 
 	query = "INSERT INTO `registrations` (`course_id`, `user_id`) VALUES " + strings.Join(newlyAddedStrs, ", ") + " ON CONFLICT(course_id, user_id) DO NOTHING"
-	fmt.Println(query)
 	_, err = tx.ExecContext(c.Request().Context(), query)
 	if err != nil {
 		c.Logger().Error(err)
