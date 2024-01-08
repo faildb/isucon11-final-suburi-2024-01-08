@@ -555,12 +555,16 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, errors)
 	}
 
+	newlyAddedStrs := make([]string, len(newlyAdded))
 	for _, course := range newlyAdded {
-		_, err = tx.ExecContext(c.Request().Context(), "INSERT INTO `registrations` (`course_id`, `user_id`) VALUES (?, ?) ON CONFLICT(course_id, user_id) DO NOTHING", course.ID, userID)
-		if err != nil {
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
+		newlyAddedStrs = append(newlyAddedStrs, fmt.Sprintf("('%v', '%v')", course.ID, userID))
+	}
+
+	query = "INSERT INTO `registrations` (`course_id`, `user_id`) VALUES " + strings.Join(newlyAddedStrs, ",") + " ON CONFLICT(course_id, user_id) DO NOTHING"
+	_, err = tx.ExecContext(c.Request().Context(), query)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	if err = tx.Commit(); err != nil {
