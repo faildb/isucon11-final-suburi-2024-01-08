@@ -48,7 +48,7 @@ sleep 0.5 && sudo systemctl is-active mysql # serviceの起動失敗確認。即
 
 # ====== go ======
 (
-  cd /home/isucon/webapp/golang
+  cd /home/isucon/webapp/go
   make all
 )
 mkdir -p /home/isucon/log/app
