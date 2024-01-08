@@ -372,7 +372,7 @@ func (h *handlers) GetRegisteredCourses(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -441,7 +441,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 		return req[i].ID < req[j].ID
 	})
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -921,7 +921,7 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "Invalid format.")
 	}
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -979,7 +979,7 @@ func (h *handlers) GetClasses(c echo.Context) error {
 
 	courseID := c.Param("courseID")
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1046,7 +1046,7 @@ func (h *handlers) AddClass(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "Invalid format.")
 	}
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1102,7 +1102,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	courseID := c.Param("courseID")
 	classID := c.Param("classID")
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1180,7 +1180,7 @@ type Score struct {
 func (h *handlers) RegisterScores(c echo.Context) error {
 	classID := c.Param("classID")
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1229,7 +1229,7 @@ type Submission struct {
 func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 	classID := c.Param("classID")
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1320,7 +1320,7 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1433,7 +1433,7 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "Invalid format.")
 	}
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1510,7 +1510,7 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 
 	announcementID := c.Param("announcementID")
 
-	tx, err := h.DB.Beginx()
+	tx, err := h.DB.BeginTxx(c.Request().Context(), nil)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
