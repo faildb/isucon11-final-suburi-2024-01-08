@@ -830,7 +830,11 @@ func (h *handlers) GetGrades(c echo.Context) error {
 				totals = append(totals, 0)
 				continue
 			}
-			total := _total.(int)
+			total, err := strconv.Atoi(_total.(string))
+			if err != nil {
+				c.Logger().Error(err)
+				return c.NoContent(http.StatusInternalServerError)
+			}
 			totals = append(totals, total)
 		}
 
