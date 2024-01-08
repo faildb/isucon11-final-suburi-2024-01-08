@@ -64,11 +64,11 @@ now=`date +'%Y-%m-%dT%H:%M:%S'`
 
 # ====== redis ======
 # redis-cli flushall  # redisの中身をflushしたいときはコメントアウト
-# sudo tee /etc/redis/redis.conf < etc/redis/redis.conf > /dev/null
-# sudo tee /lib/systemd/system/redis-server.service < lib/systemd/system/redis-server.service > /dev/null
-# sudo systemctl daemon-reload
-# sudo systemctl restart redis-server
-# sleep 0.5 && sudo systemctl is-active redis-server
+ sudo tee /etc/redis/redis.conf < etc/redis/redis.conf > /dev/null
+ sudo tee /lib/systemd/system/redis-server.service < lib/systemd/system/redis-server.service > /dev/null
+ sudo systemctl daemon-reload
+ sudo systemctl restart redis-server
+ sleep 0.5 && sudo systemctl is-active redis-server
 
 # ====== varnish ======
 # sudo tee /etc/varnish/isucon.vcl < etc/varnish/isucon.vcl > /dev/null
