@@ -22,6 +22,7 @@ import (
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/redis/go-redis/v9"
 	"github.com/samber/lo"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"golang.org/x/crypto/bcrypt"
@@ -107,6 +108,10 @@ type InitializeResponse struct {
 
 // Initialize POST /initialize 初期化エンドポイント
 func (h *handlers) Initialize(c echo.Context) error {
+	if err := rdb.FlushAll(c.Request().Context()).Err(); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
+	}
+
 	dbForInit, _ := GetDBOtel()
 
 	files := []string{
@@ -1694,6 +1699,8 @@ type AnnouncementDetail struct {
 	Unread     bool   `json:"unread" db:"unread"`
 }
 
+const getAnnouncementRegistrationsCachePrefix = "get_announcement_registrations:"
+
 // GetAnnouncementDetail GET /api/announcements/:announcementID お知らせ詳細取得
 func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 	userID, _, _, err := getUserInfo(c)
@@ -1717,11 +1724,17 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 		return c.String(http.StatusNotFound, "No such announcement.")
 	}
 
-	var registrationCount int
-	if err := h.DB.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", announcement.CourseID, userID); errors.Is(err, sql.ErrNoRows) {
-		return c.String(http.StatusNotFound, "No such announcement.")
+	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcementID, userID)).Err()
+	if errors.Is(err, redis.Nil) {
+		var registrationCount int
+		if err := h.DB.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", announcement.CourseID, userID); errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "No such announcement.")
+		} else if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcementID, userID), registrationCount, 0)
 	} else if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
