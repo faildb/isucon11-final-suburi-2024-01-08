@@ -1493,20 +1493,21 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-
-	type unreadInsert struct {
-		AnnouncementID string `db:"announcement_id"`
-		UserID         string `db:"user_id"`
-	}
-	unreadInserts := lo.Map(targets, func(user User, _ int) unreadInsert {
-		return unreadInsert{
-			AnnouncementID: req.ID,
-			UserID:         user.ID,
+	if len(targets) > 0 {
+		type unreadInsert struct {
+			AnnouncementID string `db:"announcement_id"`
+			UserID         string `db:"user_id"`
 		}
-	})
-	if _, err := tx.NamedExecContext(c.Request().Context(), "INSERT INTO `unread_announcements` (`announcement_id`, `user_id`) VALUES (?, ?)", unreadInserts); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
+		unreadInserts := lo.Map(targets, func(user User, _ int) unreadInsert {
+			return unreadInsert{
+				AnnouncementID: req.ID,
+				UserID:         user.ID,
+			}
+		})
+		if _, err := tx.NamedExecContext(c.Request().Context(), "INSERT INTO `unread_announcements` (`announcement_id`, `user_id`) VALUES (?, ?)", unreadInserts); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1558,7 +1559,7 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	if _, err := h.DB.ExecContext(c.Request().Context(), "UPDATE `unread_announcements` SET `is_deleted` = true WHERE `announcement_id` = ? AND `user_id` = ?", announcementID, userID); err != nil {
+	if _, err := h.DB.ExecContext(c.Request().Context(), "DELETE FROM `unread_announcements` WHERE `announcement_id` = ? AND `user_id` = ?", announcementID, userID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
