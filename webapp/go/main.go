@@ -555,7 +555,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, errors)
 	}
 
-	newlyAddedStrs := make([]string, len(newlyAdded))
+	newlyAddedStrs := make([]string, 0, len(newlyAdded))
 	for _, course := range newlyAdded {
 		newlyAddedStrs = append(newlyAddedStrs, fmt.Sprintf("('%v', '%v')", course.ID, userID))
 	}
