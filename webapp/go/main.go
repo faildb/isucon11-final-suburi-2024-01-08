@@ -1169,9 +1169,9 @@ func (h *handlers) AddClass(c echo.Context) error {
 	if errors.Is(err, redis.Nil) {
 		if err := db.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
 			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		} else if err == sql.ErrNoRows {
 			return c.String(http.StatusNotFound, "No such course.")
+		} else if err != nil {
+			return c.NoContent(http.StatusInternalServerError)
 		}
 		err := rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, courseID), string(course.Status), 0).Err()
 		if err != nil {
