@@ -1352,7 +1352,7 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 		" FROM `announcements`" +
 		" JOIN `courses` ON `announcements`.`course_id` = `courses`.`id`" +
 		" JOIN `registrations` ON `courses`.`id` = `registrations`.`course_id`" +
-		" LEFT JOIN `unread_announcements` ON `announcements`.`id` = `unread_announcements`.`announcement_id` AND unread_announcement.user_id = ?" +
+		" LEFT JOIN `unread_announcements` ON `announcements`.`id` = `unread_announcements`.`announcement_id` AND unread_announcements.user_id = ?" +
 		" WHERE 1=1"
 	args = append(args, userID)
 
