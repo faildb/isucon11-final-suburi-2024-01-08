@@ -928,12 +928,11 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 	defer tx.Rollback()
 
 	var count int
-	if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ? FOR UPDATE", courseID); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ? FOR UPDATE", courseID); errors.Is(err, sql.ErrNoRows) {
+		return c.String(http.StatusNotFound, "No such course.")
+	} else if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
-	}
-	if count == 0 {
-		return c.String(http.StatusNotFound, "No such course.")
 	}
 
 	if _, err := tx.ExecContext(c.Request().Context(), "UPDATE `courses` SET `status` = ? WHERE `id` = ?", req.Status, courseID); err != nil {
@@ -986,12 +985,11 @@ func (h *handlers) GetClasses(c echo.Context) error {
 	defer tx.Rollback()
 
 	var count int
-	if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", courseID); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", courseID); errors.Is(err, sql.ErrNoRows) {
+		return c.String(http.StatusNotFound, "No such course.")
+	} else if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
-	}
-	if count == 0 {
-		return c.String(http.StatusNotFound, "No such course.")
 	}
 
 	var classes []ClassWithSubmitted
@@ -1257,12 +1255,11 @@ func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 	defer tx.Rollback()
 
 	var classCount int
-	if err := tx.GetContext(c.Request().Context(), &classCount, "SELECT 1 FROM `classes` WHERE `id` = ? FOR UPDATE", classID); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &classCount, "SELECT 1 FROM `classes` WHERE `id` = ? FOR UPDATE", classID); errors.Is(err, sql.ErrNoRows) {
+		return c.String(http.StatusNotFound, "No such class.")
+	} else if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
-	}
-	if classCount == 0 {
-		return c.String(http.StatusNotFound, "No such class.")
 	}
 	var submissions []Submission
 	query := "SELECT `submissions`.`user_id`, `submissions`.`file_name`, `users`.`code` AS `user_code`" +
@@ -1461,12 +1458,11 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 	defer tx.Rollback()
 
 	var count int
-	if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", req.CourseID); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", req.CourseID); errors.Is(err, sql.ErrNoRows) {
+		return c.String(http.StatusNotFound, "No such course.")
+	} else if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
-	}
-	if count == 0 {
-		return c.String(http.StatusNotFound, "No such course.")
 	}
 
 	if _, err := tx.ExecContext(c.Request().Context(), "INSERT INTO `announcements` (`id`, `course_id`, `title`, `message`) VALUES (?, ?, ?, ?)",
@@ -1552,12 +1548,11 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 	}
 
 	var registrationCount int
-	if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", announcement.CourseID, userID); err != nil {
+	if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", announcement.CourseID, userID); errors.Is(err, sql.ErrNoRows) {
+		return c.String(http.StatusNotFound, "No such announcement.")
+	} else if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
-	}
-	if registrationCount == 0 {
-		return c.String(http.StatusNotFound, "No such announcement.")
 	}
 
 	if _, err := tx.ExecContext(c.Request().Context(), "UPDATE `unread_announcements` SET `is_deleted` = true WHERE `announcement_id` = ? AND `user_id` = ?", announcementID, userID); err != nil {
