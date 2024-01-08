@@ -20,6 +20,7 @@ import (
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/samber/lo"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -1204,8 +1205,29 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "Invalid format.")
 	}
 
+	userCodes := lo.Map(req, func(score Score, _ int) string {
+		return score.UserCode
+	})
+	uqs, args, err := sqlx.In("SELECT id, code FROM users  WHERE code IN (?)", userCodes)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	var users []User
+	if err := tx.SelectContext(c.Request().Context(), &users, uqs, args...); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	userMap := lo.Associate(users, func(user User) (string, string) {
+		return user.Code, user.ID
+	})
+
 	for _, score := range req {
-		if _, err := tx.ExecContext(c.Request().Context(), "UPDATE `submissions` JOIN `users` ON `users`.`id` = `submissions`.`user_id` SET `score` = ? WHERE `users`.`code` = ? AND `class_id` = ?", score.Score, score.UserCode, classID); err != nil {
+		uid, ok := userMap[score.UserCode]
+		if !ok {
+			return c.String(http.StatusBadRequest, "No such user.")
+		}
+		if _, err := tx.ExecContext(c.Request().Context(), "UPDATE `submissions` SET `score` = ? WHERE user_id = ? AND class_id = ?", score.Score, uid, classID); err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
