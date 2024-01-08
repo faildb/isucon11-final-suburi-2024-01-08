@@ -504,7 +504,7 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 	}
 
 	for _, course := range newlyAdded {
-		_, err = tx.ExecContext(c.Request().Context(), "INSERT INTO `registrations` (`course_id`, `user_id`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `course_id` = VALUES(`course_id`), `user_id` = VALUES(`user_id`)", course.ID, userID)
+		_, err = tx.ExecContext(c.Request().Context(), "INSERT INTO `registrations` (`course_id`, `user_id`) VALUES (?, ?) ON CONFLICT DO UPDATE SET `course_id` = EXCLUDED.course_id, `user_id` = EXCLUDED.user_id", course.ID, userID)
 		if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
@@ -1146,7 +1146,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	}
 	defer file.Close()
 
-	if _, err := tx.ExecContext(c.Request().Context(), "INSERT INTO `submissions` (`user_id`, `class_id`, `file_name`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `file_name` = VALUES(`file_name`)", userID, classID, header.Filename); err != nil {
+	if _, err := tx.ExecContext(c.Request().Context(), "INSERT INTO `submissions` (`user_id`, `class_id`, `file_name`) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET `file_name` = EXCLUDED.file_name", userID, classID, header.Filename); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
