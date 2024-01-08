@@ -301,6 +301,7 @@ func (h *handlers) Login(c echo.Context) error {
 
 	sess.Values["userID"] = user.ID
 	sess.Values["userName"] = user.Name
+	sess.Values["code"] = user.Code
 	sess.Values["isAdmin"] = user.Type == Teacher
 	sess.Options = &sessions.Options{
 		Path:   "/",
@@ -346,17 +347,23 @@ type GetMeResponse struct {
 
 // GetMe GET /api/users/me 自身の情報を取得
 func (h *handlers) GetMe(c echo.Context) error {
-	userID, userName, isAdmin, err := getUserInfo(c)
+	_, userName, isAdmin, err := getUserInfo(c)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	sess, err := session.Get(SessionName, c)
 	var userCode string
-	if err := h.DB.GetContext(c.Request().Context(), &userCode, "SELECT `code` FROM `users` WHERE `id` = ?", userID); err != nil {
-		c.Logger().Error(err)
+	if err != nil {
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	userCode = sess.Values["code"].(string)
+	// if err := h.DB.GetContext(c.Request().Context(), &userCode, "SELECT `code` FROM `users` WHERE `id` = ?", userID); err != nil {
+	// 	c.Logger().Error(err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
 
 	return c.JSON(http.StatusOK, GetMeResponse{
 		Code:    userCode,
@@ -1035,6 +1042,10 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	if err := rdb.Del(c.Request().Context(), fmt.Sprintf("%v:%v", CourseStatusCachePrefix, courseID)).Err(); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
 	ra, err := result.RowsAffected()
 	if err != nil {
 		c.Logger().Error(err)
@@ -1084,12 +1095,19 @@ func (h *handlers) GetClasses(c echo.Context) error {
 	//defer tx.Rollback()
 
 	db := h.DB
-	var count int
-	if err := db.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", courseID); errors.Is(err, sql.ErrNoRows) {
-		return c.String(http.StatusNotFound, "No such course.")
-	} else if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
+	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, courseID)).Err()
+	if errors.Is(err, redis.Nil) {
+		var count int
+		if err := db.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", courseID); errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "No such course.")
+		} else if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		if err := rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, courseID), count, 0).Err(); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
 	}
 
 	var classes []ClassWithSubmitted
@@ -1134,6 +1152,8 @@ type AddClassResponse struct {
 	ClassID string `json:"class_id"`
 }
 
+const CourseStatusCachePrefix = "couse_status"
+
 // AddClass POST /api/courses/:courseID/classes 新規講義(&課題)追加
 func (h *handlers) AddClass(c echo.Context) error {
 	courseID := c.Param("courseID")
@@ -1152,11 +1172,24 @@ func (h *handlers) AddClass(c echo.Context) error {
 
 	db := h.DB
 	var course Course
-	if err := db.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
+	res, err := rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v", CourseStatusCachePrefix, courseID)).Result()
+	if errors.Is(err, redis.Nil) {
+		if err := db.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		} else if err == sql.ErrNoRows {
+			return c.String(http.StatusNotFound, "No such course.")
+		}
+		err := rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v", CourseStatusCachePrefix, courseID), string(course.Status), 0).Err()
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+	} else if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
-	} else if err == sql.ErrNoRows {
-		return c.String(http.StatusNotFound, "No such course.")
+	} else {
+		course.Status = CourseStatus(res)
 	}
 	if course.Status != StatusInProgress {
 		return c.String(http.StatusBadRequest, "This course is not in-progress.")
@@ -1227,13 +1260,16 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, courseID, userID)).Err()
 	if errors.Is(err, redis.Nil) {
 		var registrationCount int
-		if err := h.DB.GetContext(c.Request().Context(), &registrationCount, "SELECT count(*) FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", courseID, userID); errors.Is(err, sql.ErrNoRows) {
+		if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", courseID, userID); errors.Is(err, sql.ErrNoRows) {
 			return c.String(http.StatusBadRequest, "You have not taken this course.")
 		} else if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
-		rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, courseID, userID), registrationCount, 0)
+		if err = rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, courseID, userID), registrationCount, 0).Err(); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
 	} else if err != nil {
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -1628,6 +1664,8 @@ type AddAnnouncementRequest struct {
 	Message  string `json:"message"`
 }
 
+const courseCachePrefix = "course"
+
 // AddAnnouncement POST /api/announcements 新規お知らせ追加
 func (h *handlers) AddAnnouncement(c echo.Context) error {
 	var req AddAnnouncementRequest
@@ -1642,12 +1680,19 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	var count int
-	if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", req.CourseID); errors.Is(err, sql.ErrNoRows) {
-		return c.String(http.StatusNotFound, "No such course.")
-	} else if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
+	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, req.CourseID)).Err()
+	if errors.Is(err, redis.Nil) {
+		var count int
+		if err := tx.GetContext(c.Request().Context(), &count, "SELECT 1 FROM `courses` WHERE `id` = ?", req.CourseID); errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "No such course.")
+		} else if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		if err := rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, req.CourseID), count, 0).Err(); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
 	}
 
 	if _, err := tx.ExecContext(c.Request().Context(), "INSERT INTO `announcements` (`id`, `course_id`, `title`, `message`) VALUES (?, ?, ?, ?)",
@@ -1744,7 +1789,10 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
-		rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcement.CourseID, userID), registrationCount, 0)
+		if err := rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcement.CourseID, userID), registrationCount, 0).Err(); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
 	} else if err != nil {
 		return c.NoContent(http.StatusInternalServerError)
 	}
