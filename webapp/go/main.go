@@ -1129,6 +1129,7 @@ func (h *handlers) AddClass(c echo.Context) error {
 	//}
 	//defer tx.Rollback()
 
+	db := h.DB
 	var course Course
 	if err := db.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
@@ -1140,7 +1141,6 @@ func (h *handlers) AddClass(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "This course is not in-progress.")
 	}
 
-	db := h.DB
 	classID := newULID()
 	if _, err := db.ExecContext(c.Request().Context(), "INSERT INTO `classes` (`id`, `course_id`, `part`, `title`, `description`) VALUES (?, ?, ?, ?, ?)",
 		classID, courseID, req.Part, req.Title, req.Description); err != nil {
