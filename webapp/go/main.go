@@ -1439,7 +1439,12 @@ func createSubmissionsZipOnMemory(zipFilePath string, classID string, submission
 		}
 
 		// ZIPファイルにファイルエントリを追加
-		zipFile, err := zw.Create(submission.UserCode + "-" + submission.FileName)
+		zipFile, err := zw.CreateHeader(
+			&zip.FileHeader{
+				Name:   submission.UserCode + "-" + submission.FileName,
+				Method: zip.Store,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
