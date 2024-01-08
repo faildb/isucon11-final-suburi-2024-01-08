@@ -742,8 +742,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	}
 	now := time.Now()
 	gpas := onmemoryGPAs
-	// if latestGPAs.IsZero() || latestGPAs.Add(time.Second*3).Unix() < now.Unix() {
-	if true {
+	if latestGPAs.IsZero() || len(gpas) == 0 || latestGPAs.Add(time.Second*3).Unix() < now.Unix() {
 		gpasIf, err, _ := gpasSingleflight.Do("gpas", func() (interface{}, error) {
 			// GPAの統計値
 			// 一つでも修了した科目がある学生のGPA一覧
@@ -775,7 +774,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			return err
 		}
 		gpas = gpasIf.([]float64)
-		gpasSingleflight.Forget("gpas")
+		// gpasSingleflight.Forget("gpas")
 	}
 
 	res := GetGradeResponse{
