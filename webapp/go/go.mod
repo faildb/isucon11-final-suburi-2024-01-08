@@ -1,6 +1,6 @@
 module github.com/isucon/isucon11-final/webapp/go
 
-go 1.17
+go 1.21
 
 require (
 	github.com/XSAM/otelsql v0.27.0

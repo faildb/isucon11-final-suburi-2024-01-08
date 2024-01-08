@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	SQLDirectory              = "../sql/"
+	SQLDirectory              = "../sql/pg/"
 	AssignmentsDirectory      = "../assignments/"
 	InitDataDirectory         = "../data/"
 	SessionName               = "isucholar_go"
