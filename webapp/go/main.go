@@ -1227,7 +1227,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, courseID, userID)).Err()
 	if errors.Is(err, redis.Nil) {
 		var registrationCount int
-		if err := h.DB.GetContext(c.Request().Context(), &registrationCount, "SELECT count(*) FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", courseID, userID); errors.Is(err, sql.ErrNoRows) {
+		if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT count(*) FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", courseID, userID); errors.Is(err, sql.ErrNoRows) {
 			return c.String(http.StatusBadRequest, "You have not taken this course.")
 		} else if err != nil {
 			c.Logger().Error(err)
