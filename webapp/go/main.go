@@ -1724,7 +1724,7 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 		return c.String(http.StatusNotFound, "No such announcement.")
 	}
 
-	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcementID, userID)).Err()
+	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcement.CourseID, userID)).Err()
 	if errors.Is(err, redis.Nil) {
 		var registrationCount int
 		if err := h.DB.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", announcement.CourseID, userID); errors.Is(err, sql.ErrNoRows) {
@@ -1733,7 +1733,7 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
-		rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcementID, userID), registrationCount, 0)
+		rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcement.CourseID, userID), registrationCount, 0)
 	} else if err != nil {
 		return c.NoContent(http.StatusInternalServerError)
 	}
