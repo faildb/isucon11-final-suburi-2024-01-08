@@ -560,7 +560,8 @@ func (h *handlers) RegisterCourses(c echo.Context) error {
 		newlyAddedStrs = append(newlyAddedStrs, fmt.Sprintf("('%v', '%v')", course.ID, userID))
 	}
 
-	query = "INSERT INTO `registrations` (`course_id`, `user_id`) VALUES " + strings.Join(newlyAddedStrs, ",") + " ON CONFLICT(course_id, user_id) DO NOTHING"
+	query = "INSERT INTO `registrations` (`course_id`, `user_id`) VALUES " + strings.Join(newlyAddedStrs, ", ") + " ON CONFLICT(course_id, user_id) DO NOTHING"
+	fmt.Println(query)
 	_, err = tx.ExecContext(c.Request().Context(), query)
 	if err != nil {
 		c.Logger().Error(err)
