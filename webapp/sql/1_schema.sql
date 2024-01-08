@@ -83,3 +83,10 @@ CREATE TABLE `unread_announcements`
     CONSTRAINT FK_unread_announcements_announcement_id FOREIGN KEY (`announcement_id`) REFERENCES `announcements` (`id`),
     CONSTRAINT FK_unread_announcements_user_id FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 );
+
+-- add index
+create index announcements_course_id_index
+    on isucholar.announcements (course_id);
+
+create index unread_announcements_user_id_announcement_id_index
+    on isucholar.unread_announcements (user_id, announcement_id);
