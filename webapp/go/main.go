@@ -660,33 +660,59 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	courseResults := make([]CourseResult, 0, len(registeredCourses))
 	myGPA := 0.0
 	myCredits := 0
+
+	courseIDs := lo.Map(registeredCourses, func(course Course, _ int) string {
+		return course.ID
+	})
+	cqs, args, err := sqlx.In("SELECT * FROM classes WHERE course_id IN (?) ORDER BY part DESC", courseIDs)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	var classes []Class
+	if err := h.DB.SelectContext(c.Request().Context(), &classes, cqs, args...); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	courseClassMap := lo.GroupBy(classes, func(class Class) string {
+		return class.CourseID
+	})
+	type submissionScore struct {
+		ClassID string `db:"class_id"`
+		Score   int    `db:"score"`
+	}
+	classIDs := lo.Map(classes, func(class Class, _ int) string {
+		return class.ID
+	})
+	sqs, args, err := sqlx.In("SELECT class_id, score FROM submissions WHERE class_id IN (?) AND user_id = ?", classIDs, userID)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	var submissionScores []submissionScore
+	if err := h.DB.SelectContext(c.Request().Context(), &submissionScores, sqs, args...); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	classSubmissionScoreMap := lo.Associate(submissionScores, func(submissionScore submissionScore) (string, int) {
+		return submissionScore.ClassID, submissionScore.Score
+	})
+
 	for _, course := range registeredCourses {
-		// 講義一覧の取得
-		var classes []Class
-		query = "SELECT *" +
-			" FROM `classes`" +
-			" WHERE `course_id` = ?" +
-			" ORDER BY `part` DESC"
-		if err := h.DB.SelectContext(c.Request().Context(), &classes, query, course.ID); err != nil {
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
+		classes := courseClassMap[course.ID]
 
 		// 講義毎の成績計算処理
 		classScores := make([]ClassScore, 0, len(classes))
 		var myTotalScore int
 		for _, class := range classes {
+			// redisから提出者数取得
 			var submissionsCount int
-			if err := h.DB.GetContext(c.Request().Context(), &submissionsCount, "SELECT COUNT(*) FROM `submissions` WHERE `class_id` = ?", class.ID); err != nil {
-				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
-			}
-
-			var myScore sql.NullInt64
-			if err := h.DB.GetContext(c.Request().Context(), &myScore, "SELECT `submissions`.`score` FROM `submissions` WHERE `user_id` = ? AND `class_id` = ?", userID, class.ID); err != nil && err != sql.ErrNoRows {
-				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
-			} else if err == sql.ErrNoRows || !myScore.Valid {
+			//if err := h.DB.GetContext(c.Request().Context(), &submissionsCount, "SELECT COUNT(*) FROM `submissions` WHERE `class_id` = ?", class.ID); err != nil {
+			//	c.Logger().Error(err)
+			//	return c.NoContent(http.StatusInternalServerError)
+			//}
+			score, ok := classSubmissionScoreMap[class.ID]
+			if !ok {
 				classScores = append(classScores, ClassScore{
 					ClassID:    class.ID,
 					Part:       class.Part,
@@ -695,7 +721,6 @@ func (h *handlers) GetGrades(c echo.Context) error {
 					Submitters: submissionsCount,
 				})
 			} else {
-				score := int(myScore.Int64)
 				myTotalScore += score
 				classScores = append(classScores, ClassScore{
 					ClassID:    class.ID,
@@ -1478,7 +1503,7 @@ func createSubmissionsZipOnMemory(zipFilePath string, classID string, submission
 	}
 
 	// -i 'tmpDir/*': 空zipを許す
-	//return exec.Command("zip", "-j", "-r", zipFilePath, tmpDir, "-i", tmpDir+"*").Run()
+	// return exec.Command("zip", "-j", "-r", zipFilePath, tmpDir, "-i", tmpDir+"*").Run()
 	return buf.Bytes(), nil
 }
 
