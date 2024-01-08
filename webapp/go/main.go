@@ -135,6 +135,22 @@ func (h *handlers) Initialize(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	type subumitterNum struct {
+		ClassID    string `db:"class_id"`
+		Submitters int    `db:"submitters"`
+	}
+	var subumitterNums []subumitterNum
+	if err := dbForInit.SelectContext(c.Request().Context(), &subumitterNums, "SELECT class_id, COUNT(*) AS submitters FROM submissions GROUP BY class_id"); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	for _, sn := range subumitterNums {
+		if err := rdb.Set(context.Background(), "submissions:"+sn.ClassID, sn.Submitters, time.Minute*2).Err(); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+	}
+
 	res := InitializeResponse{
 		Language: "go",
 	}
@@ -698,6 +714,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		return submissionScore.ClassID, submissionScore.Score
 	})
 
+	ctx := c.Request().Context()
 	for _, course := range registeredCourses {
 		classes := courseClassMap[course.ID]
 
@@ -706,11 +723,11 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		var myTotalScore int
 		for _, class := range classes {
 			// redisから提出者数取得
-			var submissionsCount int
-			//if err := h.DB.GetContext(c.Request().Context(), &submissionsCount, "SELECT COUNT(*) FROM `submissions` WHERE `class_id` = ?", class.ID); err != nil {
-			//	c.Logger().Error(err)
-			//	return c.NoContent(http.StatusInternalServerError)
-			//}
+			submissionsCount, err := rdb.Get(ctx, "submissions:"+class.ID).Int()
+			if err != nil {
+				c.Logger().Error(err)
+				return c.NoContent(http.StatusInternalServerError)
+			}
 			score, ok := classSubmissionScoreMap[class.ID]
 			if !ok {
 				classScores = append(classScores, ClassScore{
@@ -1282,6 +1299,11 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	}
 
 	if err := tx.Commit(); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	ctx := c.Request().Context()
+	if err := rdb.Incr(ctx, "submissions:"+classID).Err(); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
