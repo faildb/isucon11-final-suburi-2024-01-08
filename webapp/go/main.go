@@ -819,10 +819,19 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		totalKeys := lo.Map(registeredUsers, func(cu courseUser, _ int) string {
 			return fmt.Sprintf("course_total_scores:%s:%s", course.ID, cu.UserID)
 		})
-		var totals []int
-		if err := rdb.MGet(ctx, totalKeys...).Scan(&totals); err != nil {
+		_totals, err := rdb.MGet(ctx, totalKeys...).Result()
+		if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
+		}
+		totals := make([]int, 0, len(registeredUsers))
+		for _, _total := range _totals {
+			if _total == nil {
+				totals = append(totals, 0)
+				continue
+			}
+			total := _total.(int)
+			totals = append(totals, total)
 		}
 
 		courseResults = append(courseResults, CourseResult{
