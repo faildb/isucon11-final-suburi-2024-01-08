@@ -1129,16 +1129,16 @@ func (h *handlers) AddClass(c echo.Context) error {
 	//}
 	//defer tx.Rollback()
 
-	//var course Course
-	//if err := tx.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ? FOR SHARE", courseID); err != nil && err != sql.ErrNoRows {
-	//	c.Logger().Error(err)
-	//	return c.NoContent(http.StatusInternalServerError)
-	//} else if err == sql.ErrNoRows {
-	//	return c.String(http.StatusNotFound, "No such course.")
-	//}
-	//if course.Status != StatusInProgress {
-	//	return c.String(http.StatusBadRequest, "This course is not in-progress.")
-	//}
+	var course Course
+	if err := db.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	} else if err == sql.ErrNoRows {
+		return c.String(http.StatusNotFound, "No such course.")
+	}
+	if course.Status != StatusInProgress {
+		return c.String(http.StatusBadRequest, "This course is not in-progress.")
+	}
 
 	db := h.DB
 	classID := newULID()
