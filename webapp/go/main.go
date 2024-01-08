@@ -22,6 +22,7 @@ import (
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/redis/go-redis/v9"
 	"github.com/samber/lo"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"golang.org/x/crypto/bcrypt"
@@ -107,6 +108,10 @@ type InitializeResponse struct {
 
 // Initialize POST /initialize 初期化エンドポイント
 func (h *handlers) Initialize(c echo.Context) error {
+	if err := rdb.FlushAll(c.Request().Context()).Err(); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
+	}
+
 	dbForInit, _ := GetDBOtel()
 
 	files := []string{
@@ -1220,13 +1225,24 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "This course is not in progress.")
 	}
 
-	var registrationCount int
-	if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT COUNT(*) FROM `registrations` WHERE `user_id` = ? AND `course_id` = ?", userID, courseID); err != nil {
-		c.Logger().Error(err)
+	//var registrationCount int
+	//if err := tx.GetContext(c.Request().Context(), &registrationCount, "SELECT COUNT(*) FROM `registrations` WHERE `user_id` = ? AND `course_id` = ?", userID, courseID); err != nil {
+	//	c.Logger().Error(err)
+	//	return c.NoContent(http.StatusInternalServerError)
+	//}
+
+	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, courseID, userID)).Err()
+	if errors.Is(err, redis.Nil) {
+		var registrationCount int
+		if err := h.DB.GetContext(c.Request().Context(), &registrationCount, "SELECT count(*) FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", courseID, userID); errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusBadRequest, "You have not taken this course.")
+		} else if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, courseID, userID), registrationCount, 0)
+	} else if err != nil {
 		return c.NoContent(http.StatusInternalServerError)
-	}
-	if registrationCount == 0 {
-		return c.String(http.StatusBadRequest, "You have not taken this course.")
 	}
 
 	var submissionClosed bool
@@ -1701,6 +1717,8 @@ type AnnouncementDetail struct {
 	Unread     bool   `json:"unread" db:"unread"`
 }
 
+const getAnnouncementRegistrationsCachePrefix = "get_announcement_registrations:"
+
 // GetAnnouncementDetail GET /api/announcements/:announcementID お知らせ詳細取得
 func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 	userID, _, _, err := getUserInfo(c)
@@ -1724,11 +1742,17 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 		return c.String(http.StatusNotFound, "No such announcement.")
 	}
 
-	var registrationCount int
-	if err := h.DB.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", announcement.CourseID, userID); errors.Is(err, sql.ErrNoRows) {
-		return c.String(http.StatusNotFound, "No such announcement.")
+	err = rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcement.CourseID, userID)).Err()
+	if errors.Is(err, redis.Nil) {
+		var registrationCount int
+		if err := h.DB.GetContext(c.Request().Context(), &registrationCount, "SELECT 1 FROM `registrations` WHERE `course_id` = ? AND `user_id` = ?", announcement.CourseID, userID); errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "No such announcement.")
+		} else if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v:%v", getAnnouncementRegistrationsCachePrefix, announcement.CourseID, userID), registrationCount, 0)
 	} else if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
