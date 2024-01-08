@@ -1165,7 +1165,7 @@ func (h *handlers) AddClass(c echo.Context) error {
 
 	db := h.DB
 	var course Course
-	res, err := rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, courseID)).Result()
+	res, err := rdb.Get(c.Request().Context(), fmt.Sprintf("%v:%v", CourseStatusCachePrefix, courseID)).Result()
 	if errors.Is(err, redis.Nil) {
 		if err := db.GetContext(c.Request().Context(), &course, "SELECT * FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
 			c.Logger().Error(err)
@@ -1173,7 +1173,7 @@ func (h *handlers) AddClass(c echo.Context) error {
 		} else if err == sql.ErrNoRows {
 			return c.String(http.StatusNotFound, "No such course.")
 		}
-		err := rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v", courseCachePrefix, courseID), string(course.Status), 0).Err()
+		err := rdb.Set(c.Request().Context(), fmt.Sprintf("%v:%v", CourseStatusCachePrefix, courseID), string(course.Status), 0).Err()
 		if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
