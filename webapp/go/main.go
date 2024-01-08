@@ -1364,7 +1364,7 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 	query += " AND `registrations`.`user_id` = ?" +
 		" ORDER BY `announcements`.`id` DESC" +
 		" LIMIT ? OFFSET ?"
-	args = append(args, userID, userID)
+	args = append(args, userID)
 
 	var page int
 	if c.QueryParam("page") == "" {
@@ -1504,7 +1504,7 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 				UserID:         user.ID,
 			}
 		})
-		if _, err := tx.NamedExecContext(c.Request().Context(), "INSERT INTO `unread_announcements` (`announcement_id`, `user_id`) VALUES (?, ?)", unreadInserts); err != nil {
+		if _, err := tx.NamedExecContext(c.Request().Context(), "INSERT INTO `unread_announcements` (`announcement_id`, `user_id`) VALUES (:announcement_id, :user_id)", unreadInserts); err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
