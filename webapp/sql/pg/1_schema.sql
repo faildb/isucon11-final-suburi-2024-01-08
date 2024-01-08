@@ -84,3 +84,14 @@ CREATE TABLE unread_announcements
 --    CONSTRAINT fk_unread_announcements_announcement_id FOREIGN KEY (announcement_id) REFERENCES announcements (id),
 --    CONSTRAINT fk_unread_announcements_user_id FOREIGN KEY (user_id) REFERENCES users (id)
 );
+
+create index announcements_course_id_index
+    on isucholar.announcements (course_id);
+
+ALTER TABLE announcements SET UNLOGGED;
+ALTER TABLE classes SET UNLOGGED;
+ALTER TABLE courses SET UNLOGGED;
+ALTER TABLE registrations SET UNLOGGED;
+ALTER TABLE submissions SET UNLOGGED;
+ALTER TABLE unread_announcements SET UNLOGGED;
+ALTER TABLE users SET UNLOGGED;
